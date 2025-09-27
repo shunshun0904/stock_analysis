@@ -403,22 +403,13 @@ def main():
         except Exception:
             pass
 
-        # If provided token is a refresh token, try to obtain an access token first
-        access_token = obtain_access_token(
-            refresh_token=ID_TOKEN,
-            client_id=os.environ.get('JQUANTS_CLIENT_ID'),
-            client_secret=os.environ.get('JQUANTS_CLIENT_SECRET'),
-            token_endpoint=os.environ.get('JQUANTS_TOKEN_ENDPOINT')
-        )
-
-        if access_token:
-            headers = {"Authorization": f"Bearer {access_token}"}
+        # Assume JQUANTS_TOKEN is an access token (Bearer). Use it directly.
+        headers = {"Authorization": f"Bearer {ID_TOKEN}"}
 
         response = request_with_retry("https://api.jquants.com/v1/listed/info", headers=headers)
         if response is None:
             print("API取得エラー: リクエストが失敗しました（タイムアウトや接続エラーの可能性）。")
             return False
-
         if response.status_code == 200:
             try:
                 all_stocks = response.json()["info"]
@@ -431,32 +422,11 @@ def main():
         else:
             text = response.text or ''
             print(f"API取得エラー: ステータスコード={response.status_code}\nレスポンステキスト: {text[:500]}")
-            # Try refreshing once if token invalid/expired
             if response.status_code in (401, 403) or 'invalid' in text.lower() or 'expired' in text.lower():
-                print("アクセストークンが無効なため、リフレッシュトークンで再取得を試みます...")
-                new_access = obtain_access_token(
-                    refresh_token=ID_TOKEN,
-                    client_id=os.environ.get('JQUANTS_CLIENT_ID'),
-                    client_secret=os.environ.get('JQUANTS_CLIENT_SECRET'),
-                    token_endpoint=os.environ.get('JQUANTS_TOKEN_ENDPOINT')
-                )
-                if new_access:
-                    headers = {"Authorization": f"Bearer {new_access}"}
-                    response2 = request_with_retry("https://api.jquants.com/v1/listed/info", headers=headers)
-                    if response2 and response2.status_code == 200:
-                        try:
-                            all_stocks = response2.json().get('info', [])
-                        except Exception as e:
-                            print(f"レスポンスJSONパースエラー(再試行): {e}\nレスポンステキスト: {response2.text[:500]}")
-                            return False
-                        growth_stocks = [s for s in all_stocks if s.get('MarketCodeName') == 'グロース']
-                        print(f"グロース市場銘柄数: {len(growth_stocks)}")
-                    else:
-                        print(f"再取得後もAPIアクセス失敗: {response2.status_code if response2 else 'no response'}")
-                        return False
-                else:
-                    print("リフレッシュによるアクセストークン取得に失敗しました。Secretsや client_id/client_secret を確認してください。")
-                    return False
+                print("認証エラー: 提供された JQUANTS_TOKEN が無効または期限切れの可能性があります。")
+                print(" - 確認手順: GitHub Secrets の値が access token (Bearer) であること、また期限内であることを確認してください。")
+                print(" - もし refresh token を使う運用に戻す場合は、環境変数に client_id/client_secret と JQUANTS_TOKEN_ENDPOINT を設定してください。")
+            return False
             return False
     except Exception as e:
         print(f"銘柄リスト取得エラー: {e}")
