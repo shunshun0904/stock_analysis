@@ -23,6 +23,8 @@ jobs:
           pip install -r requirements.txt
 
       - name: Step 1: Scanner
+        env:
+          JQUANTS_TOKEN: ${{ secrets.JQUANTS_TOKEN }}
         run: python step1_stock_scanner.py
 
       - name: Step 2: Metrics Analysis
