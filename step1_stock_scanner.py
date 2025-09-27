@@ -195,7 +195,8 @@ def get_actual_market_data(code, headers):
 
         # 2) daily_quotes で最新の終値を取得（直近7営業日を検索）
         price_url = "https://api.jquants.com/v1/prices/daily_quotes"
-        today = datetime.now()
+        # today = datetime.now()
+        today = datetime(2025, 9, 25)
         to_date = today.strftime('%Y%m%d')
         from_date = (today - timedelta(days=14)).strftime('%Y%m%d')
         p_resp = request_with_retry(price_url, params={'code': code, 'from': from_date, 'to': to_date}, headers=headers)

@@ -279,6 +279,22 @@ def main():
         return False
     
     headers = {"Authorization": f"Bearer {step2_results.get('token', '')}"}
+    # 取引所上の銘柄コード->会社名マッピングを取得（あれば表示に使う）
+    def fetch_company_names(headers):
+        try:
+            url = 'https://api.jquants.com/v1/listed/info'
+            resp = requests.get(url, headers=headers, timeout=15)
+            if resp.status_code == 200:
+                info = resp.json().get('info', [])
+                df = pd.DataFrame(info)
+                if 'Code' in df.columns and 'CompanyName' in df.columns:
+                    mapping = dict(zip(df['Code'].astype(str).str.zfill(4), df['CompanyName']))
+                    return mapping
+        except Exception as e:
+            print(f"警告: 上場会社情報取得失敗: {e}")
+        return {}
+
+    code_to_name = fetch_company_names(headers)
     top3_stocks = step2_results['top3_stocks']
     holding_stocks = step2_results['holding_stocks']
     
@@ -330,8 +346,9 @@ def main():
     chart_data = []
     
     for i, stock in enumerate(top3_stocks[:3]):  # 上位3銘柄のみ
-        code = stock['code']
-        name = stock['name']
+        code = str(stock['code']).zfill(4)
+        # 優先: J-Quants 上場情報の CompanyName -> step2 の name -> コード
+        name = code_to_name.get(code) or stock.get('name') or code
         
         print(f"\\n株価チャート作成 {i+1}/3: {name}({code})")
         
@@ -368,7 +385,9 @@ def main():
     lines.append(subject)
     lines.append("\n=== 投資推奨上位3銘柄 ===\n")
     for i, stock in enumerate(top3_stocks[:3]):
-        lines.append(f"{i+1}. {stock.get('code','')} {stock.get('name','')}")
+        code = str(stock.get('code','')).zfill(4)
+        display_name = code_to_name.get(code) or stock.get('name') or code
+        lines.append(f"{i+1}. {code} {display_name}")
         lines.append(f"   総合スコア: {stock.get('comprehensive_score', 0):.4f}")
         lines.append(f"   面積スコア: {stock.get('area_score', 0):.4f}, 形状スコア: {stock.get('shape_score', 0):.4f}")
         lines.append(f"   時価総額(億円): {stock.get('market_cap', 'N/A')}, PER: {stock.get('per', 'N/A')}")
@@ -388,7 +407,9 @@ def main():
 
     lines.append("\n=== 保有銘柄 ===\n")
     for h in holding_stocks:
-        lines.append(f"- {h.get('code','')} {h.get('name','')}  総合スコア:{h.get('comprehensive_score',0):.4f}")
+        code = str(h.get('code','')).zfill(4)
+        display_name = code_to_name.get(code) or h.get('name') or code
+        lines.append(f"- {code} {display_name}  総合スコア:{h.get('comprehensive_score',0):.4f}")
 
     lines.append("\n=== 株価チャート要約 ===\n")
     if chart_data:
