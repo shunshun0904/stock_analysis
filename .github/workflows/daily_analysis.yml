@@ -2,40 +2,35 @@ name: Daily Stock Analysis
 
 on:
   schedule:
-    - cron: '30 7 * * *'  # 毎日7:30 UTC（JST 16:30）に実行
+    - cron: '05 16 * * *'   # 毎日22:30 UTC (翌日7:30 JST)
   workflow_dispatch:
 
 jobs:
-  run-analysis:
+  analyze-and-send:
     runs-on: ubuntu-latest
     steps:
       - name: Checkout code
-        uses: actions/checkout@v3
+        uses: actions/checkout@v4
 
-      - name: Setup Python
+      - name: Set up Python
         uses: actions/setup-python@v4
         with:
           python-version: '3.10'
 
       - name: Install dependencies
         run: |
+          pip install --upgrade pip
           pip install -r requirements.txt
 
-      - name: Step1: Scanner
+      - name: Step 1: Scanner
         run: python step1_stock_scanner.py
 
-      - name: Step2: Metrics & Scoring
+      - name: Step 2: Metrics Analysis
         run: python step2_metrics_analysis.py
 
-      - name: Step3: Chart creation
-        run: python step3_chart_creation.py
-
-      - name: Commit and push charts
-        run: |
-          git config user.name "github-actions"
-          git config user.email "actions@github.com"
-          git add *.png summary.txt
-          git commit -m "Daily analysis outputs ($(date +'%Y-%m-%d'))"
-          git push
+      - name: Step 3: Chart Creation & Send Email
         env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GMAIL_TOKEN: ${{ secrets.GMAIL_TOKEN }}
+          TO_EMAIL:    ${{ secrets.TO_EMAIL }}
+          OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
+        run: python step3_chart_creation.py

@@ -7,6 +7,15 @@ import requests
 from datetime import datetime, timedelta
 import time
 import json
+import os
+import base64
+from email.mime.multipart import MIMEMultipart
+from email.mime.text import MIMEText
+from email.mime.application import MIMEApplication
+from google.oauth2.credentials import Credentials
+from googleapiclient.discovery import build
+import openai
+import glob
 
 INPUT_FILE = "step2_results.json"
 
@@ -35,6 +44,59 @@ def load_step2_results():
     except Exception as e:
         print(f"✗ ステップ2結果読み込みエラー: {e}")
         return None
+
+def generate_generative_analysis(top3, holdings, chart_data, api_key):
+    """LLMによる考察文生成"""
+    prompt = (
+        "あなたは高度な株式分析レポート作成AIです。以下のJSONデータ（上位3銘柄、主要スコア、形状バランス、株価推移サマリーなど）"
+        "とレーダーチャートの内容をもとに、プロのファンドマネージャーが毎日伝えるレベルで精緻な考察と明日以降の戦略方針含む分析レポートを日本語で生成してください。"
+        f"\n\n【データJSON】\n{top3}\n\n【保有銘柄JSON】\n{holdings}\n\n【株価チャート要約】\n{chart_data}\n"
+    )
+    
+    # OpenAI APIキー設定
+    openai.api_key = api_key
+    
+    try:
+        completion = openai.ChatCompletion.create(
+            model="gpt-4-turbo",
+            messages=[{"role":"user", "content":prompt}],
+            max_tokens=900,
+            temperature=0.7,
+        )
+        return completion.choices[0].message['content']
+    except Exception as e:
+        print(f"LLM考察生成エラー: {e}")
+        return "本日の分析レポートの自動生成に失敗しました。添付チャートをご確認ください。"
+
+def create_and_send_email(subject, body_text, to_email, attachment_paths, token_json_str):
+    """Gmail APIでメール送信"""
+    try:
+        creds = Credentials.from_authorized_user_info(json.loads(token_json_str), scopes=['https://www.googleapis.com/auth/gmail.send'])
+        service = build('gmail', 'v1', credentials=creds)
+
+        message = MIMEMultipart()
+        message['to'] = to_email
+        message['subject'] = subject
+        message.attach(MIMEText(body_text, 'plain', 'utf-8'))
+
+        for path in attachment_paths:
+            if os.path.exists(path):
+                with open(path, 'rb') as f:
+                    part = MIMEApplication(f.read(), Name=os.path.basename(path))
+                part['Content-Disposition'] = f'attachment; filename="{os.path.basename(path)}"'
+                message.attach(part)
+            else:
+                print(f"警告: 添付ファイルが見つかりません: {path}")
+
+        raw_message = base64.urlsafe_b64encode(message.as_bytes()).decode()
+        body = {'raw': raw_message}
+
+        sent_message = service.users().messages().send(userId='me', body=body).execute()
+        print(f'✓ メール送信成功！ Message ID: {sent_message["id"]}')
+        return True
+    except Exception as e:
+        print(f"✗ メール送信エラー: {e}")
+        return False
 
 def create_radar_chart(stocks_data, chart_title, filename):
     """レーダーチャート作成（統一指標順序）"""
@@ -173,7 +235,7 @@ def create_stock_price_chart(code, stock_name, headers):
         return False, None
 
 def main():
-    """ステップ3: レーダーチャート4枚 + 株価チャート3枚作成"""
+    """ステップ3: レーダーチャート4枚 + 株価チャート3枚作成 + LLM考察 + メール送信"""
     
     # ステップ2結果を読み込み
     step2_results = load_step2_results()
@@ -256,6 +318,37 @@ def main():
     
     print("\\n✓ 株価チャート3枚作成完了")
     
+    # ===== LLM考察生成 & メール送信処理 =====
+    print(f"\\n【LLM考察生成・メール送信処理】")
+    
+    # GitHub Secretsから環境変数を取得
+    token_secret = os.environ.get('GMAIL_TOKEN')
+    to_address = os.environ.get('TO_EMAIL')
+    openai_api_key = os.environ.get('OPENAI_API_KEY')
+
+    if token_secret and to_address and openai_api_key:
+        # LLMによる考察（本文）生成
+        try:
+            generative_body = generate_generative_analysis(
+                top3=top3_stocks,
+                holdings=holding_stocks,
+                chart_data=chart_data if chart_data else None,
+                api_key=openai_api_key
+            )
+        except Exception as e:
+            # フォールバック（障害時は簡易本文）
+            print(f"LLM生成エラー: {e}")
+            generative_body = "本日の分析レポートの自動生成に失敗しました。添付チャートをご確認ください。"
+
+        # 既存の件名＋添付を維持し、本文だけLLM生成に差し替え
+        subject = f"日次新高値ブレイク法分析レポート ({datetime.now().strftime('%Y-%m-%d')})"
+        attachments = glob.glob('*.png')
+
+        print(f"{len(attachments)}個のファイルを添付して、{to_address}にメールを送信します...")
+        create_and_send_email(subject, generative_body, to_address, attachments, token_secret)
+    else:
+        print("\\nメール送信をスキップ: GitHub Secrets (GMAIL_TOKEN, TO_EMAIL, OPENAI_API_KEY)が設定されていません。")
+
     # ===== 作成結果サマリー =====
     print(f"\\n=== ステップ3完了 ===")
     print("生成ファイル:")
@@ -278,7 +371,7 @@ def main():
         print(f"{i+1}. {stock['name']}（{stock['code']})：総合スコア {stock['comprehensive_score']:.4f}{new_high_mark}")
         print(f"   時価総額: {stock.get('market_cap', 0):.0f}億円, PER: {stock.get('per', 0):.1f}倍")
     
-    print(f"\\n🎉 新高値ブレイク法による銘柄選定・チャート作成完了！")
+    print(f"\\n🎉 新高値ブレイク法による銘柄選定・チャート作成・LLM考察・メール送信完了！")
     
     return True
 
@@ -286,6 +379,6 @@ if __name__ == "__main__":
     success = main()
     if success:
         print(f"\\n✓ ステップ3正常完了")
-        print(f"全ての処理が完了しました。生成されたチャートを確認してください。")
+        print(f"全ての処理が完了しました。生成されたチャートとメール送信を確認してください。")
     else:
         print(f"\\n✗ ステップ3でエラーが発生")
