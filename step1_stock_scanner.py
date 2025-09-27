@@ -16,6 +16,20 @@ ID_TOKEN = os.environ.get("JQUANTS_TOKEN", "")
 HOLDING_CODES = ['5621', '5527']
 OUTPUT_FILE = "step1_results.json"
 
+def request_with_retry(url, params=None, headers=None, max_retries=3, backoff=1):
+    """Simple GET wrapper with retries and exponential backoff. Returns Response or None."""
+    for attempt in range(1, max_retries + 1):
+        try:
+            resp = requests.get(url, params=params, headers=headers, timeout=30)
+            return resp
+        except requests.RequestException as e:
+            print(f"Request error (attempt {attempt}/{max_retries}): {e}")
+            if attempt < max_retries:
+                time.sleep(backoff * attempt)
+            else:
+                return None
+
+
 def get_actual_market_data(code, headers):
     """実際の時価総額・PERデータを取得（簡易版）"""
     try:
@@ -106,7 +120,7 @@ def main():
     headers = {"Authorization": f"Bearer {ID_TOKEN}"}
     
     # 日付設定（65週前）
-    today = datetime(2025, 9, 26)  # 実運用時は datetime.now()
+    today = datetime.now()  # 実運用時は datetime.now()
     start_date_65w = today - timedelta(weeks=65)
     today_str = today.strftime('%Y%m%d')
     start_date_str = start_date_65w.strftime('%Y%m%d')
@@ -117,13 +131,26 @@ def main():
     
     # 東証グロース銘柄リスト取得
     try:
-        response = requests.get("https://api.jquants.com/v1/listed/info", headers=headers)
+        if not ID_TOKEN:
+            print("警告: JQUANTS_TOKEN が未設定です。環境変数を確認してください。")
+            return False
+
+        response = request_with_retry("https://api.jquants.com/v1/listed/info", headers=headers)
+        if response is None:
+            print("API取得エラー: リクエストが失敗しました（タイムアウトや接続エラーの可能性）。")
+            return False
+
         if response.status_code == 200:
-            all_stocks = response.json()["info"]
-            growth_stocks = [s for s in all_stocks if s["MarketCodeName"] == "グロース"]
+            try:
+                all_stocks = response.json()["info"]
+            except Exception as e:
+                print(f"レスポンスJSONパースエラー: {e}\nレスポンステキスト: {response.text[:500]}")
+                return False
+
+            growth_stocks = [s for s in all_stocks if s.get("MarketCodeName") == "グロース"]
             print(f"グロース市場銘柄数: {len(growth_stocks)}")
         else:
-            print(f"API取得エラー: {response.status_code}")
+            print(f"API取得エラー: ステータスコード={response.status_code}\nレスポンステキスト: {response.text[:500]}")
             return False
     except Exception as e:
         print(f"銘柄リスト取得エラー: {e}")
