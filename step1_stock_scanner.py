@@ -38,41 +38,116 @@ def request_with_retry(url, params=None, headers=None, max_retries=3, backoff=1)
 def obtain_access_token(refresh_token, client_id=None, client_secret=None, token_endpoint=None):
     """Exchange a refresh token for an access token using OAuth2 token endpoint.
     Returns access_token string on success or None on failure."""
-    if not token_endpoint:
-        token_endpoint = os.environ.get('JQUANTS_TOKEN_ENDPOINT', 'https://api.jquants.com/v1/oauth/token')
+    # Try a few common token endpoints if none provided
+    candidate_endpoints = []
+    if token_endpoint:
+        candidate_endpoints.append(token_endpoint)
+    candidate_endpoints.extend([
+        os.environ.get('JQUANTS_TOKEN_ENDPOINT', ''),
+        'https://api.jquants.com/v1/oauth/token',
+        'https://api.jquants.com/oauth2/token',
+        'https://api.jquants.com/v1/token',
+    ])
 
-    data = {
-        'grant_type': 'refresh_token',
-        'refresh_token': refresh_token,
-    }
+    # Deduplicate and filter empty
+    candidate_endpoints = [e for i, e in enumerate(candidate_endpoints) if e and e not in candidate_endpoints[:i]]
+
+    # Prepare common body
+    body = {'grant_type': 'refresh_token', 'refresh_token': refresh_token}
     if client_id:
-        data['client_id'] = client_id
+        body['client_id'] = client_id
     if client_secret:
-        data['client_secret'] = client_secret
+        body['client_secret'] = client_secret
 
-    try:
-        resp = requests.post(token_endpoint, data=data, timeout=30)
-        if resp.status_code in (200, 201):
-            try:
-                jd = resp.json()
-            except Exception:
-                print(f"トークン交換レスポンスのJSON解釈に失敗しました: {resp.text[:500]}")
-                return None
+    # Try multiple auth styles: (A) form body with client_id/secret, (B) form body with Basic auth header,
+    # (C) x-api-key header if client_id looks like an API key.
 
-            # common keys: access_token, token
-            access = jd.get('access_token') or jd.get('accessToken') or jd.get('token')
-            if access:
-                print("アクセストークン取得成功（長さ: {}）".format(len(access)))
-                return access
+    for endpoint in candidate_endpoints:
+        if not endpoint:
+            continue
+        print(f"トークンエンドポイント試行: {endpoint}")
+
+        # Attempt 1: form body (client_id/client_secret in body)
+        try:
+            headers = {'Content-Type': 'application/x-www-form-urlencoded'}
+            resp = requests.post(endpoint, data=body, headers=headers, timeout=30)
+            print(f"  -> status={resp.status_code}")
+            if resp.status_code in (200, 201):
+                try:
+                    jd = resp.json()
+                except Exception:
+                    print(f"  レスポンスJSON解釈失敗: {resp.text[:500]}")
+                    continue
+                access = jd.get('access_token') or jd.get('accessToken') or jd.get('token')
+                if access:
+                    print(f"アクセストークン取得成功（長さ: {len(access)}） via body auth")
+                    return access
+                else:
+                    print(f"  トークンキーが見つかりません: {list(jd.keys())}")
+                    continue
             else:
-                print(f"トークン交換に失敗しました。レスポンス: {jd}")
-                return None
-        else:
-            print(f"トークンエンドポイントエラー: status={resp.status_code} text={resp.text[:500]}")
-            return None
-    except Exception as e:
-        print(f"トークン交換リクエスト失敗: {e}")
-        return None
+                # If 403/Missing Authentication Token, print helpful hint and try next method
+                print(f"  トークンエンドポイント応答: status={resp.status_code} text={resp.text[:500]}")
+        except Exception as e:
+            print(f"  トークンエンドポイント接続エラー: {e}")
+
+        # Attempt 2: Basic auth header (client_id:client_secret)
+        if client_id and client_secret:
+            try:
+                import base64
+                basic = base64.b64encode(f"{client_id}:{client_secret}".encode()).decode()
+                headers = {
+                    'Authorization': f"Basic {basic}",
+                    'Content-Type': 'application/x-www-form-urlencoded'
+                }
+                resp = requests.post(endpoint, data={'grant_type': 'refresh_token', 'refresh_token': refresh_token}, headers=headers, timeout=30)
+                print(f"  -> Basic auth status={resp.status_code}")
+                if resp.status_code in (200, 201):
+                    try:
+                        jd = resp.json()
+                    except Exception:
+                        print(f"  Basic auth レスポンスJSON解釈失敗: {resp.text[:500]}")
+                        continue
+                    access = jd.get('access_token') or jd.get('accessToken') or jd.get('token')
+                    if access:
+                        print(f"アクセストークン取得成功（長さ: {len(access)}） via Basic auth")
+                        return access
+                    else:
+                        print(f"  Basic auth: トークンキーが見つかりません: {list(jd.keys())}")
+                else:
+                    print(f"  Basic auth 応答: status={resp.status_code} text={resp.text[:500]}")
+            except Exception as e:
+                print(f"  Basic auth 試行で例外: {e}")
+
+        # Attempt 3: x-api-key style header (some services use this)
+        if client_id and len(client_id) > 10:
+            try:
+                headers = {'x-api-key': client_id, 'Content-Type': 'application/x-www-form-urlencoded'}
+                resp = requests.post(endpoint, data={'grant_type': 'refresh_token', 'refresh_token': refresh_token}, headers=headers, timeout=30)
+                print(f"  -> x-api-key status={resp.status_code}")
+                if resp.status_code in (200, 201):
+                    try:
+                        jd = resp.json()
+                    except Exception:
+                        print(f"  x-api-key レスポンスJSON解釈失敗: {resp.text[:500]}")
+                        continue
+                    access = jd.get('access_token') or jd.get('accessToken') or jd.get('token')
+                    if access:
+                        print(f"アクセストークン取得成功（長さ: {len(access)}） via x-api-key")
+                        return access
+                    else:
+                        print(f"  x-api-key: トークンキーが見つかりません: {list(jd.keys())}")
+                else:
+                    print(f"  x-api-key 応答: status={resp.status_code} text={resp.text[:500]}")
+            except Exception as e:
+                print(f"  x-api-key 試行で例外: {e}")
+
+    # 全ての試行失敗
+    print("トークン交換に失敗しました。HTTP 403 や 'Missing Authentication Token' が返る場合、")
+    print(" - token_endpoint の URL が間違っている可能性（環境変数 JQUANTS_TOKEN_ENDPOINT を確認）")
+    print(" - client_id / client_secret の値が正しくない可能性")
+    print(" - あるいは渡されたトークンは refresh_token ではなくアクセストークンで、リフレッシュは不要/不可かもしれません")
+    return None
 
 
 def get_actual_market_data(code, headers):
