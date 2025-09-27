@@ -22,6 +22,11 @@ jobs:
           pip install --upgrade pip
           pip install -r requirements.txt
 
+      - name: Install Japanese fonts (for matplotlib)
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y fonts-noto-cjk fonts-ipafont-gothic
+
       - name: Step 1 Scanner
         env:
           JQUANTS_TOKEN: ${{ secrets.JQUANTS_TOKEN }}

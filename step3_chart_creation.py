@@ -34,7 +34,6 @@ def ensure_japanese_font():
                     return f.name
     except Exception:
         pass
-
     # Try to download Noto Sans JP and register it
     try:
         url = "https://github.com/google/fonts/raw/main/ofl/notosansjp/NotoSansJP-Regular.otf"
@@ -43,14 +42,20 @@ def ensure_japanese_font():
             tmp_path = os.path.join('/tmp', 'NotoSansJP-Regular.otf')
             with open(tmp_path, 'wb') as wf:
                 wf.write(resp.content)
-            font_manager.fontManager.addfont(tmp_path)
             try:
-                # rebuild font cache
-                font_manager._rebuild()
+                font_manager.fontManager.addfont(tmp_path)
             except Exception:
+                # addfont may still work even if it raises; continue
                 pass
-            matplotlib.rcParams['font.family'] = 'Noto Sans JP'
-            return 'Noto Sans JP'
+            try:
+                fp = font_manager.FontProperties(fname=tmp_path)
+                font_name = fp.get_name()
+                matplotlib.rcParams['font.family'] = font_name
+                return font_name
+            except Exception:
+                # fallback to setting known name
+                matplotlib.rcParams['font.family'] = 'Noto Sans JP'
+                return 'Noto Sans JP'
     except Exception as e:
         print(f"日本語フォントのダウンロード失敗: {e}")
 
@@ -95,15 +100,37 @@ def generate_generative_analysis(top3, holdings, chart_data, api_key):
     # OpenAI APIキー設定
     openai.api_key = api_key
     
+    def generate_simple_report(top3, holdings, chart_data):
+        # Simple fallback summary in Japanese when LLM is unavailable
+        lines = ["自動生成レポート（簡易版）", ""]
+        lines.append("上位推奨銘柄:")
+        for s in top3[:3]:
+            lines.append(f"- {s.get('code','')} {s.get('name','')} (スコア: {s.get('score', 'N/A')})")
+        lines.append("")
+        lines.append("保有銘柄サマリ:")
+        for h in holdings:
+            lines.append(f"- {h.get('code','')} {h.get('name','')} (新高値回数: {h.get('new_high_count', 'N/A')})")
+        lines.append("")
+        lines.append("※OpenAIの利用が制限されているため、簡易レポートを表示しています。")
+        return "\n".join(lines)
+
     try:
         completion = openai.chat.completions.create(
-            model="gpt-4o",
+            model="gpt-3.5-turbo",
             messages=[{"role":"user", "content":prompt}],
             max_tokens=900,
             temperature=0.7,
         )
         return completion.choices[0].message.content
     except Exception as e:
+        # detect quota error from OpenAI
+        try:
+            msg = str(e)
+            if 'insufficient_quota' in msg or '429' in msg or 'quota' in msg.lower():
+                print(f"LLM考察生成エラー（quota）: {e}")
+                return generate_simple_report(top3, holdings, chart_data)
+        except Exception:
+            pass
         print(f"LLM考察生成エラー: {e}")
         return "本日の分析レポートの自動生成に失敗しました。添付チャートをご確認ください。"
 
@@ -141,7 +168,13 @@ def create_radar_chart(stocks_data, chart_title, filename):
     """レーダーチャート作成（統一指標順序）"""
     # 日本語フォント設定
     selected_font = ensure_japanese_font()
-    # print(f"使用フォント: {selected_font}")
+    # Ensure rcParams uses the selected font
+    try:
+        matplotlib.rcParams['font.family'] = selected_font
+        matplotlib.rcParams['font.sans-serif'] = [selected_font]
+        matplotlib.rcParams['axes.unicode_minus'] = False
+    except Exception:
+        pass
     
     # レーダーチャート設定
     fig, ax = plt.subplots(figsize=(12, 12), subplot_kw=dict(projection='polar'))
@@ -212,9 +245,13 @@ def create_stock_price_chart(code, stock_name, headers):
                 print(f"  データ取得成功: {len(df)}日分")
                 
                 # 日本語フォント設定
-                # 日本語フォント設定
                 selected_font = ensure_japanese_font()
-                # print(f"使用フォント: {selected_font}")
+                try:
+                    matplotlib.rcParams['font.family'] = selected_font
+                    matplotlib.rcParams['font.sans-serif'] = [selected_font]
+                    matplotlib.rcParams['axes.unicode_minus'] = False
+                except Exception:
+                    pass
                 
                 # 株価チャート作成
                 fig, (ax1, ax2) = plt.subplots(2, 1, figsize=(15, 10), 
