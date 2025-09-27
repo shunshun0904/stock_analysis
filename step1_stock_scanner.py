@@ -234,8 +234,18 @@ def main():
         }
     }
     
+    def json_default(o):
+        import numpy as np
+        if isinstance(o, np.bool_):
+            return bool(o)
+        if isinstance(o, (np.integer, np.int64, np.int32)):
+            return int(o)
+        if isinstance(o, (np.floating, np.float64, np.float32)):
+            return float(o)
+        return str(o)
+
     with open(OUTPUT_FILE, 'w', encoding='utf-8') as f:
-        json.dump(results, f, ensure_ascii=False, indent=2)
+        json.dump(results, f, ensure_ascii=False, indent=2, default=json_default)
     
     print(f"\\n=== ステップ1完了 ===")
     print(f"65週新高値更新銘柄: {len(all_new_high_stocks)}件")
