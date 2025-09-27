@@ -12,6 +12,11 @@ warnings.filterwarnings('ignore')
 
 # === 設定 ===
 ID_TOKEN = os.environ.get("JQUANTS_TOKEN", "")
+if isinstance(ID_TOKEN, str):
+    ID_TOKEN = ID_TOKEN.strip()
+    # If user accidentally stored the full 'Bearer ...' string, remove leading 'Bearer '
+    if ID_TOKEN.lower().startswith('bearer '):
+        ID_TOKEN = ID_TOKEN.split(' ', 1)[1]
 
 HOLDING_CODES = ['5621', '5527']
 OUTPUT_FILE = "step1_results.json"
@@ -135,6 +140,12 @@ def main():
             print("警告: JQUANTS_TOKEN が未設定です。環境変数を確認してください。")
             return False
 
+        # Debug: show token length (masked) to help diagnose secret issues without printing token
+        try:
+            print(f"JQUANTS_TOKEN length: {len(ID_TOKEN)} (masked)")
+        except Exception:
+            pass
+
         response = request_with_retry("https://api.jquants.com/v1/listed/info", headers=headers)
         if response is None:
             print("API取得エラー: リクエストが失敗しました（タイムアウトや接続エラーの可能性）。")
@@ -150,7 +161,14 @@ def main():
             growth_stocks = [s for s in all_stocks if s.get("MarketCodeName") == "グロース"]
             print(f"グロース市場銘柄数: {len(growth_stocks)}")
         else:
-            print(f"API取得エラー: ステータスコード={response.status_code}\nレスポンステキスト: {response.text[:500]}")
+            text = response.text or ''
+            print(f"API取得エラー: ステータスコード={response.status_code}\nレスポンステキスト: {text[:500]}")
+            # よくある原因を推測してヒントを出す
+            if response.status_code in (401, 403) or 'invalid' in text.lower() or 'expired' in text.lower():
+                print("エラー推測: 認証トークンが無効または期限切れです。以下を確認してください:")
+                print(" - リポジトリの Secrets に正しい JQUANTS_TOKEN が設定されているか")
+                print(" - トークンの先頭/末尾に余分な空白や改行、二重引用符が含まれていないか")
+                print(" - トークンが有効（期限切れでない）か、必要ならプロバイダで再発行する")
             return False
     except Exception as e:
         print(f"銘柄リスト取得エラー: {e}")
