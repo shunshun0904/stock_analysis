@@ -19,6 +19,45 @@ import glob
 
 INPUT_FILE = "step2_results.json"
 
+# Ensure Japanese font is available for matplotlib (try local fonts, otherwise download Noto Sans JP)
+import matplotlib
+from matplotlib import font_manager
+
+def ensure_japanese_font():
+    """Return selected font name after ensuring a Japanese-capable font is available and set as rcParams."""
+    candidates = ['Noto Sans JP', 'NotoSansJP', 'IPAexGothic', 'TakaoPGothic', 'Yu Gothic', 'Meiryo', 'DejaVu Sans']
+    try:
+        for name in candidates:
+            for f in font_manager.fontManager.ttflist:
+                if name.lower() in f.name.lower():
+                    matplotlib.rcParams['font.family'] = f.name
+                    return f.name
+    except Exception:
+        pass
+
+    # Try to download Noto Sans JP and register it
+    try:
+        url = "https://github.com/google/fonts/raw/main/ofl/notosansjp/NotoSansJP-Regular.otf"
+        resp = requests.get(url, timeout=30)
+        if resp.status_code == 200:
+            tmp_path = os.path.join('/tmp', 'NotoSansJP-Regular.otf')
+            with open(tmp_path, 'wb') as wf:
+                wf.write(resp.content)
+            font_manager.fontManager.addfont(tmp_path)
+            try:
+                # rebuild font cache
+                font_manager._rebuild()
+            except Exception:
+                pass
+            matplotlib.rcParams['font.family'] = 'Noto Sans JP'
+            return 'Noto Sans JP'
+    except Exception as e:
+        print(f"日本語フォントのダウンロード失敗: {e}")
+
+    # Fallback to DejaVu Sans
+    matplotlib.rcParams['font.family'] = 'DejaVu Sans'
+    return 'DejaVu Sans'
+
 # 統一指標配置順序（全レーダーチャートで統一）
 METRICS_ORDER = [
     "新高値更新回数", "出来高急増率", "売上成長率（3年平均）",
@@ -57,13 +96,13 @@ def generate_generative_analysis(top3, holdings, chart_data, api_key):
     openai.api_key = api_key
     
     try:
-        completion = openai.ChatCompletion.create(
-            model="gpt-4-turbo",
+        completion = openai.chat.completions.create(
+            model="gpt-4o",
             messages=[{"role":"user", "content":prompt}],
             max_tokens=900,
             temperature=0.7,
         )
-        return completion.choices[0].message['content']
+        return completion.choices[0].message.content
     except Exception as e:
         print(f"LLM考察生成エラー: {e}")
         return "本日の分析レポートの自動生成に失敗しました。添付チャートをご確認ください。"
@@ -100,9 +139,9 @@ def create_and_send_email(subject, body_text, to_email, attachment_paths, token_
 
 def create_radar_chart(stocks_data, chart_title, filename):
     """レーダーチャート作成（統一指標順序）"""
-    
-    # 日本語フォント設定（環境に応じて調整）
-    plt.rcParams['font.family'] = 'DejaVu Sans'
+    # 日本語フォント設定
+    selected_font = ensure_japanese_font()
+    # print(f"使用フォント: {selected_font}")
     
     # レーダーチャート設定
     fig, ax = plt.subplots(figsize=(12, 12), subplot_kw=dict(projection='polar'))
@@ -173,7 +212,9 @@ def create_stock_price_chart(code, stock_name, headers):
                 print(f"  データ取得成功: {len(df)}日分")
                 
                 # 日本語フォント設定
-                plt.rcParams['font.family'] = 'DejaVu Sans'
+                # 日本語フォント設定
+                selected_font = ensure_japanese_font()
+                # print(f"使用フォント: {selected_font}")
                 
                 # 株価チャート作成
                 fig, (ax1, ax2) = plt.subplots(2, 1, figsize=(15, 10), 
