@@ -14,7 +14,6 @@ from email.mime.text import MIMEText
 from email.mime.application import MIMEApplication
 from google.oauth2.credentials import Credentials
 from googleapiclient.discovery import build
-import openai
 import glob
 
 INPUT_FILE = "step2_results.json"
@@ -89,50 +88,9 @@ def load_step2_results():
         print(f"✗ ステップ2結果読み込みエラー: {e}")
         return None
 
-def generate_generative_analysis(top3, holdings, chart_data, api_key):
-    """LLMによる考察文生成"""
-    prompt = (
-        "あなたは高度な株式分析レポート作成AIです。以下のJSONデータ（上位3銘柄、主要スコア、形状バランス、株価推移サマリーなど）"
-        "とレーダーチャートの内容をもとに、プロのファンドマネージャーが毎日伝えるレベルで精緻な考察と明日以降の戦略方針含む分析レポートを日本語で生成してください。"
-        f"\n\n【データJSON】\n{top3}\n\n【保有銘柄JSON】\n{holdings}\n\n【株価チャート要約】\n{chart_data}\n"
-    )
-    
-    # OpenAI APIキー設定
-    openai.api_key = api_key
-    
-    def generate_simple_report(top3, holdings, chart_data):
-        # Simple fallback summary in Japanese when LLM is unavailable
-        lines = ["自動生成レポート（簡易版）", ""]
-        lines.append("上位推奨銘柄:")
-        for s in top3[:3]:
-            lines.append(f"- {s.get('code','')} {s.get('name','')} (スコア: {s.get('score', 'N/A')})")
-        lines.append("")
-        lines.append("保有銘柄サマリ:")
-        for h in holdings:
-            lines.append(f"- {h.get('code','')} {h.get('name','')} (新高値回数: {h.get('new_high_count', 'N/A')})")
-        lines.append("")
-        lines.append("※OpenAIの利用が制限されているため、簡易レポートを表示しています。")
-        return "\n".join(lines)
-
-    try:
-        completion = openai.chat.completions.create(
-            model="gpt-3.5-turbo",
-            messages=[{"role":"user", "content":prompt}],
-            max_tokens=900,
-            temperature=0.7,
-        )
-        return completion.choices[0].message.content
-    except Exception as e:
-        # detect quota error from OpenAI
-        try:
-            msg = str(e)
-            if 'insufficient_quota' in msg or '429' in msg or 'quota' in msg.lower():
-                print(f"LLM考察生成エラー（quota）: {e}")
-                return generate_simple_report(top3, holdings, chart_data)
-        except Exception:
-            pass
-        print(f"LLM考察生成エラー: {e}")
-        return "本日の分析レポートの自動生成に失敗しました。添付チャートをご確認ください。"
+# Note: LLM generation removed per user request. This script will compose a plain-text
+# summary including charts and the numeric metrics used for scoring, and send that via
+# Gmail API (or save to a local file when Gmail credentials are not available).
 
 def create_and_send_email(subject, body_text, to_email, attachment_paths, token_json_str):
     """Gmail APIでメール送信"""
@@ -396,36 +354,70 @@ def main():
     
     print("\\n✓ 株価チャート3枚作成完了")
     
-    # ===== LLM考察生成 & メール送信処理 =====
-    print(f"\\n【LLM考察生成・メール送信処理】")
-    
-    # GitHub Secretsから環境変数を取得
+    # ===== メール本文作成（LLMなし） & メール送信/ローカル保存 =====
+    print(f"\n【メール本文作成・メール送信/保存】")
+
     token_secret = os.environ.get('GMAIL_TOKEN')
     to_address = os.environ.get('TO_EMAIL')
-    openai_api_key = os.environ.get('OPENAI_API_KEY')
 
-    if token_secret and to_address and openai_api_key:
-        # LLMによる考察（本文）生成
-        try:
-            generative_body = generate_generative_analysis(
-                top3=top3_stocks,
-                holdings=holding_stocks,
-                chart_data=chart_data if chart_data else None,
-                api_key=openai_api_key
-            )
-        except Exception as e:
-            # フォールバック（障害時は簡易本文）
-            print(f"LLM生成エラー: {e}")
-            generative_body = "本日の分析レポートの自動生成に失敗しました。添付チャートをご確認ください。"
+    # 件名
+    subject = f"日次新高値ブレイク法分析レポート ({datetime.now().strftime('%Y-%m-%d')})"
 
-        # 既存の件名＋添付を維持し、本文だけLLM生成に差し替え
-        subject = f"日次新高値ブレイク法分析レポート ({datetime.now().strftime('%Y-%m-%d')})"
-        attachments = glob.glob('*.png')
+    # 本文組み立て: 上位3・保有銘柄・チャート要約・指標の数値
+    lines = []
+    lines.append(subject)
+    lines.append("\n=== 投資推奨上位3銘柄 ===\n")
+    for i, stock in enumerate(top3_stocks[:3]):
+        lines.append(f"{i+1}. {stock.get('code','')} {stock.get('name','')}")
+        lines.append(f"   総合スコア: {stock.get('comprehensive_score', 0):.4f}")
+        lines.append(f"   面積スコア: {stock.get('area_score', 0):.4f}, 形状スコア: {stock.get('shape_score', 0):.4f}")
+        lines.append(f"   時価総額(億円): {stock.get('market_cap', 'N/A')}, PER: {stock.get('per', 'N/A')}")
+        # raw fields if present
+        if 'issued_shares' in stock or 'latest_close' in stock or 'eps' in stock or 'market_cap_jpy' in stock:
+            extra = []
+            if 'issued_shares' in stock:
+                extra.append(f"発行済株式数:{stock['issued_shares']:,}株")
+            if 'latest_close' in stock:
+                extra.append(f"最新終値:{stock['latest_close']:.0f}円")
+            if 'eps' in stock:
+                extra.append(f"EPS:{stock['eps']}")
+            if 'market_cap_jpy' in stock:
+                extra.append(f"時価総額(JPY):{stock['market_cap_jpy']:,}円")
+            lines.append("   (" + "; ".join(extra) + ")")
+        lines.append("")
 
-        print(f"{len(attachments)}個のファイルを添付して、{to_address}にメールを送信します...")
-        create_and_send_email(subject, generative_body, to_address, attachments, token_secret)
+    lines.append("\n=== 保有銘柄 ===\n")
+    for h in holding_stocks:
+        lines.append(f"- {h.get('code','')} {h.get('name','')}  総合スコア:{h.get('comprehensive_score',0):.4f}")
+
+    lines.append("\n=== 株価チャート要約 ===\n")
+    if chart_data:
+        for item in chart_data:
+            lines.append(f"- {item['code']} {item['name']}: 最新終値 {item.get('latest_price','N/A')}, データ点数 {item.get('data_points','N/A')}")
     else:
-        print("\\nメール送信をスキップ: GitHub Secrets (GMAIL_TOKEN, TO_EMAIL, OPENAI_API_KEY)が設定されていません。")
+        lines.append("(株価チャートデータはありません)")
+
+    lines.append("\n=== 補足 ===")
+    lines.append("このメールにはレーダーチャートと株価チャートのPNGファイルを添付しています。LLMによる文章生成は行っていません。")
+
+    body_text = "\n".join(lines)
+
+    attachments = glob.glob('*.png')
+
+    if token_secret and to_address:
+        print(f"{len(attachments)}個のファイルを添付して、{to_address}にメールを送信します...")
+        ok = create_and_send_email(subject, body_text, to_address, attachments, token_secret)
+        if not ok:
+            # 保存して手動送付できるようにローカルに保存
+            with open('step3_email_body.txt', 'w', encoding='utf-8') as wf:
+                wf.write(body_text)
+            print("メール送信に失敗したため、本文を step3_email_body.txt に保存しました。PNGはワークスペースにあります。")
+    else:
+        # Gmail設定がない場合はローカル保存
+        with open('step3_email_body.txt', 'w', encoding='utf-8') as wf:
+            wf.write(body_text)
+        print("GMAIL_TOKEN または TO_EMAIL が未設定のため、メール送信を行いませんでした。")
+        print("本文を step3_email_body.txt に保存しました。PNGファイルを手動で添付して送信してください。")
 
     # ===== 作成結果サマリー =====
     print(f"\\n=== ステップ3完了 ===")
