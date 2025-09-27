@@ -310,13 +310,28 @@ def main():
         is_holding = stock['is_holding']
         
         if code in market_data:
-            market_cap = market_data[code]['market_cap']
-            per = market_data[code]['per']
+            md = market_data[code]
+            market_cap = md.get('market_cap')
+            per = md.get('per')
+            # optional raw fields
+            issued_shares = md.get('issued_shares') or md.get('issuedShares') or md.get('issued_share')
+            latest_close = md.get('latest_close')
+            market_cap_jpy = md.get('market_cap_jpy')
+            eps = md.get('eps') or md.get('EarningsPerShare')
             
             # 保有銘柄は条件関係なく含める
             if is_holding or (market_cap <= 250 and per >= 10):
                 stock['market_cap'] = market_cap
                 stock['per'] = per
+                # attach raw fields if available for traceability
+                if issued_shares is not None:
+                    stock['issued_shares'] = issued_shares
+                if latest_close is not None:
+                    stock['latest_close'] = latest_close
+                if market_cap_jpy is not None:
+                    stock['market_cap_jpy'] = market_cap_jpy
+                if eps is not None:
+                    stock['eps'] = eps
                 stock['qualified'] = True
                 qualified_stocks.append(stock)
                 
@@ -330,12 +345,18 @@ def main():
                 if per < 10:
                     reasons.append(f"PER{per:.1f}倍<10倍")
                 
-                excluded_stocks.append({
+                ex_entry = {
                     'code': code,
                     'name': stock['name'],
                     'comprehensive_score': stock['comprehensive_score'],
                     'reason': ', '.join(reasons)
-                })
+                }
+                # attach raw fields for excluded too
+                if issued_shares is not None:
+                    ex_entry['issued_shares'] = issued_shares
+                if latest_close is not None:
+                    ex_entry['latest_close'] = latest_close
+                excluded_stocks.append(ex_entry)
                 print(f"✗ {stock['name']}: {', '.join(reasons)}")
         else:
             print(f"⚠ {stock['name']}: 市場データなし")
@@ -353,7 +374,14 @@ def main():
         new_high_mark = " ★65週新高値" if stock['is_new_high_today'] else ""
         print(f"{i+1}. {stock['code']} {stock['name']}")
         print(f"   総合スコア: {stock['comprehensive_score']:.4f}")
+        extra = []
+        if 'issued_shares' in stock:
+            extra.append(f"発行済株式数:{stock['issued_shares']:,}株")
+        if 'latest_close' in stock:
+            extra.append(f"最新終値:{stock['latest_close']:.0f}円")
         print(f"   時価総額: {stock['market_cap']:.0f}億円, PER: {stock['per']:.1f}倍{new_high_mark}")
+        if extra:
+            print(f"   ({'; '.join(extra)})")
     
     print(f"\\n保有銘柄評価:")
     for stock in holding_stocks:
@@ -361,6 +389,13 @@ def main():
         print(f"{ranking}位. {stock['code']} {stock['name']}")
         print(f"   総合スコア: {stock['comprehensive_score']:.4f}")
         print(f"   時価総額: {stock['market_cap']:.0f}億円, PER: {stock['per']:.1f}倍")
+        if 'issued_shares' in stock or 'latest_close' in stock:
+            parts = []
+            if 'issued_shares' in stock:
+                parts.append(f"発行済株式数:{stock['issued_shares']:,}株")
+            if 'latest_close' in stock:
+                parts.append(f"最新終値:{stock['latest_close']:.0f}円")
+            print(f"   ({'; '.join(parts)})")
     
     # 結果をJSONファイルに保存
     results = {
