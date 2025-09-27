@@ -22,15 +22,15 @@ jobs:
           pip install --upgrade pip
           pip install -r requirements.txt
 
-      - name: Step 1: Scanner
+      - name: Step 1 Scanner
         env:
           JQUANTS_TOKEN: ${{ secrets.JQUANTS_TOKEN }}
         run: python step1_stock_scanner.py
 
-      - name: Step 2: Metrics Analysis
+      - name: Step 2 Metrics Analysis
         run: python step2_metrics_analysis.py
 
-      - name: Step 3: Chart Creation & Send Email
+      - name: Step 3 Chart Creation & Send Email
         env:
           GMAIL_TOKEN: ${{ secrets.GMAIL_TOKEN }}
           TO_EMAIL:    ${{ secrets.TO_EMAIL }}
