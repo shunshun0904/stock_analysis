@@ -430,48 +430,38 @@ def main():
                     'market_cap': market_cap,
                     'per': per
                 }
-                        market_cap, per, raw = None, None, None
-                        try:
-                            market_cap, per = get_actual_market_data(code, headers)
-                        except Exception:
-                            market_cap, per = 50.0, 15.0
-
-                        # If get_actual_market_data returned detailed raw data via global variables or structure,
-                        # we will fill it below when available. The function itself updates local variables internally.
-
-                        batch_results.append({
             time.sleep(0.1)  # API制限対策
         
         all_new_high_stocks.extend(batch_results)
         print(f"第{batch_num + 1}段階結果: {len(batch_results)}件")
     
-    # 保有銘柄の65週新高値確認 + 市場データ取得
-    print(f"\\n保有銘柄の65週新高値判定 + 市場データ取得")
+    # 保有銘柄の65週新高値判定 + 市場データ取得
+    print(f"\n保有銘柄の65週新高値判定 + 市場データ取得")
     holding_stock_info = []
-    
+
     for code in HOLDING_CODES:
         print(f"確認中: {code}")
-        
+
         is_new_high, high_count, _, _, _ = check_65w_high_intraday(
             code, today_str, start_date_str, headers
         )
-        
+
         # 保有銘柄の市場データを必ず取得
-            market_cap, per = get_actual_market_data(code, headers)
-            try:
-                market_data_dict[code] = {
-                    'market_cap': float(market_cap),
-                    'per': float(per)
-                }
-            except Exception:
-                market_data_dict[code] = {
-                    'market_cap': market_cap,
-                    'per': per
-                }
-        
+        market_cap, per = get_actual_market_data(code, headers)
+        try:
+            market_data_dict[code] = {
+                'market_cap': float(market_cap),
+                'per': float(per)
+            }
+        except Exception:
+            market_data_dict[code] = {
+                'market_cap': market_cap,
+                'per': per
+            }
+
         stock_info = next((s for s in all_stocks if s['Code'] == code), None)
         name = stock_info['CompanyName'] if stock_info else f"保有銘柄{code}"
-        
+
         holding_stock_info.append({
             'code': code,
             'name': name,
