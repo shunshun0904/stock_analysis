@@ -45,7 +45,7 @@ if _raw_token_env:
 # Output file for step1
 OUTPUT_FILE = os.environ.get('STEP1_OUTPUT_FILE', 'step1_results.json')
 # Holding codes to always check (can be overridden by env var like 'HOLDING_CODES=1234,5678')
-HOLDING_CODES = []
+HOLDING_CODES = ['5621', '5527']
 hc_env = os.environ.get('HOLDING_CODES')
 if hc_env:
     try:

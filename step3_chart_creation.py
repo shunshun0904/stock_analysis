@@ -18,58 +18,9 @@ import glob
 
 INPUT_FILE = "step2_results.json"
 
-# Ensure Japanese font is available for matplotlib (try local fonts, otherwise download Noto Sans JP)
+# Enable Japanese font support for matplotlib
 import matplotlib
-from matplotlib import font_manager
-
-def ensure_japanese_font():
-    """Return selected font name after ensuring a Japanese-capable font is available and set as rcParams."""
-    candidates = ['Noto Sans JP', 'NotoSansJP', 'IPAexGothic', 'TakaoPGothic', 'Yu Gothic', 'Meiryo', 'DejaVu Sans']
-    try:
-        for name in candidates:
-            for f in font_manager.fontManager.ttflist:
-                if name.lower() in f.name.lower():
-                    matplotlib.rcParams['font.family'] = f.name
-                    return f.name
-    except Exception:
-        pass
-    # Try to download Noto Sans JP and register it
-    try:
-        url = "https://github.com/google/fonts/raw/main/ofl/notosansjp/NotoSansJP-Regular.otf"
-        resp = requests.get(url, timeout=30)
-        if resp.status_code == 200:
-            tmp_path = os.path.join('/tmp', 'NotoSansJP-Regular.otf')
-            with open(tmp_path, 'wb') as wf:
-                wf.write(resp.content)
-            try:
-                font_manager.fontManager.addfont(tmp_path)
-            except Exception:
-                # addfont may still work even if it raises; continue
-                pass
-            # Rebuild font manager cache to ensure new font is available to matplotlib
-            try:
-                font_manager._rebuild()
-            except Exception:
-                try:
-                    # fallback: reinitialize fontManager
-                    font_manager.fontManager = font_manager.FontManager()
-                except Exception:
-                    pass
-            try:
-                fp = font_manager.FontProperties(fname=tmp_path)
-                font_name = fp.get_name()
-                matplotlib.rcParams['font.family'] = font_name
-                return font_name
-            except Exception:
-                # fallback to setting known name
-                matplotlib.rcParams['font.family'] = 'Noto Sans JP'
-                return 'Noto Sans JP'
-    except Exception as e:
-        print(f"日本語フォントのダウンロード失敗: {e}")
-
-    # Fallback to DejaVu Sans
-    matplotlib.rcParams['font.family'] = 'DejaVu Sans'
-    return 'DejaVu Sans'
+import japanize_matplotlib  # This automatically configures Japanese fonts
 
 # 統一指標配置順序（全レーダーチャートで統一）
 METRICS_ORDER = [
@@ -132,42 +83,41 @@ def create_and_send_email(subject, body_text, to_email, attachment_paths, token_
         return False
 
 def create_radar_chart(stocks_data, chart_title, filename):
-    """レーダーチャート作成（統一指標順序）"""
-    # 日本語フォント設定
-    selected_font = ensure_japanese_font()
-    # Ensure rcParams uses the selected font
-    try:
-        matplotlib.rcParams['font.family'] = selected_font
-        matplotlib.rcParams['font.sans-serif'] = [selected_font]
-        matplotlib.rcParams['axes.unicode_minus'] = False
-    except Exception:
-        pass
-    
+    """レーダーチャート作成（統一指標順序・日本語フォント対応）"""
     # レーダーチャート設定
-    fig, ax = plt.subplots(figsize=(12, 12), subplot_kw=dict(projection='polar'))
+    fig, ax = plt.subplots(figsize=(14, 12), subplot_kw=dict(projection='polar'))
     
     # 角度設定（7角形）
     angles = [i * 2 * np.pi / 7 for i in range(7)]
     angles += angles[:1]  # 閉じるために最初の角度を追加
     
-    colors = ['red', 'blue', 'green']
-    alphas = [0.3, 0.3, 0.3]
-    linewidths = [2.5, 2.0, 2.0]
+    # 色・スタイル設定（保有銘柄は特別な色で表示）
+    colors = ['#FF6B6B', '#4ECDC4', '#45B7D1', '#96CEB4', '#FFEAA7', '#DDA0DD', '#98D8C7']
+    alphas = [0.25, 0.25, 0.25, 0.25, 0.25, 0.25, 0.25]
+    linewidths = [3.0, 2.5, 2.5, 2.0, 2.0, 2.0, 2.0]
     
-    for i, stock in enumerate(stocks_data):
-        if i < len(colors):  # 色数制限対策
-            values = stock['scores'] + [stock['scores'][0]]  # 閉じる
-            
-            ax.plot(angles, values, 'o-', linewidth=linewidths[i], 
-                    color=colors[i], label=stock['name'])
-            ax.fill(angles, values, color=colors[i], alpha=alphas[i])
+    max_stocks = min(len(stocks_data), len(colors))
     
-    # レーダーチャート装飾
+    for i in range(max_stocks):
+        stock = stocks_data[i]
+        values = stock['scores'] + [stock['scores'][0]]  # 閉じる
+        
+        # 保有銘柄かどうかでスタイルを変える
+        is_holding = stock.get('is_holding', False)
+        line_style = '-' if not is_holding else '--'
+        marker_style = 'o' if not is_holding else 's'
+        
+        ax.plot(angles, values, marker=marker_style, linestyle=line_style, 
+                linewidth=linewidths[i], color=colors[i], 
+                label=f"{stock['name']} {'(保有)' if is_holding else ''}")
+        ax.fill(angles, values, color=colors[i], alpha=alphas[i])
+    
+    # レーダーチャート装飾（japanize_matplotlib が自動でフォント設定）
     ax.set_xticks(angles[:-1])
-    ax.set_xticklabels(METRICS_ORDER, fontsize=11, fontweight='bold')
+    ax.set_xticklabels(METRICS_ORDER, fontsize=12, fontweight='bold')
     ax.set_ylim(0, 1)
-    ax.set_title(chart_title, fontsize=16, fontweight='bold', pad=30)
-    ax.legend(loc='upper right', bbox_to_anchor=(1.4, 1.0), fontsize=12)
+    ax.set_title(chart_title, fontsize=18, fontweight='bold', pad=40)
+    ax.legend(loc='upper right', bbox_to_anchor=(1.3, 1.1), fontsize=11)
     ax.grid(True, alpha=0.3)
     
     # 目盛り設定
@@ -176,8 +126,7 @@ def create_radar_chart(stocks_data, chart_title, filename):
     
     plt.tight_layout()
     plt.savefig(filename, dpi=300, bbox_inches='tight', facecolor='white')
-    plt.show()
-    plt.close()
+    plt.close()  # Remove plt.show() to avoid blocking
     
     print(f"✓ レーダーチャート作成完了: {filename}")
 
@@ -211,14 +160,7 @@ def create_stock_price_chart(code, stock_name, headers):
                 
                 print(f"  データ取得成功: {len(df)}日分")
                 
-                # 日本語フォント設定
-                selected_font = ensure_japanese_font()
-                try:
-                    matplotlib.rcParams['font.family'] = selected_font
-                    matplotlib.rcParams['font.sans-serif'] = [selected_font]
-                    matplotlib.rcParams['axes.unicode_minus'] = False
-                except Exception:
-                    pass
+                # japanize_matplotlib が自動で日本語フォントを設定
                 
                 # 株価チャート作成
                 fig, (ax1, ax2) = plt.subplots(2, 1, figsize=(15, 10), 
@@ -312,12 +254,18 @@ def main():
     # ===== レーダーチャート4枚作成 =====
     print(f"\\n【レーダーチャート作成】")
     
+    # 保有銘柄フラグを明示的に設定
+    for stock in holding_stocks:
+        stock['is_holding'] = True
+    for stock in top3_stocks:
+        stock['is_holding'] = False
+
     # チャート1: 1位 + 保有2銘柄
     if len(top3_stocks) > 0:
         chart1_stocks = [top3_stocks[0]] + holding_stocks
         create_radar_chart(
             chart1_stocks,
-            f"Chart 1: {top3_stocks[0]['name']} (1st) + Holdings Comparison",
+            f"保有銘柄 vs {top3_stocks[0]['name']} (1位)",
             "radar_chart_1_top1_vs_holdings.png"
         )
     
@@ -326,7 +274,7 @@ def main():
         chart2_stocks = [top3_stocks[1]] + holding_stocks
         create_radar_chart(
             chart2_stocks,
-            f"Chart 2: {top3_stocks[1]['name']} (2nd) + Holdings Comparison", 
+            f"保有銘柄 vs {top3_stocks[1]['name']} (2位)", 
             "radar_chart_2_top2_vs_holdings.png"
         )
     
@@ -335,7 +283,7 @@ def main():
         chart3_stocks = [top3_stocks[2]] + holding_stocks
         create_radar_chart(
             chart3_stocks,
-            f"Chart 3: {top3_stocks[2]['name']} (3rd) + Holdings Comparison",
+            f"保有銘柄 vs {top3_stocks[2]['name']} (3位)",
             "radar_chart_3_top3_vs_holdings.png"
         )
     
@@ -343,7 +291,7 @@ def main():
     if len(top3_stocks) >= 3:
         create_radar_chart(
             top3_stocks,
-            "Chart 4: Top 3 Stocks Overall Comparison (Shape Balance Considered)",
+            "投資推奨上位3銘柄 比較分析（総合スコア順）",
             "radar_chart_4_top3_comparison.png"
         )
     
