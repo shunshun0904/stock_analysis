@@ -86,31 +86,44 @@ def create_radar_chart(stocks_data, chart_title, filename):
     """レーダーチャート作成（統一指標順序・日本語フォント対応）"""
     # レーダーチャート設定
     fig, ax = plt.subplots(figsize=(14, 12), subplot_kw=dict(projection='polar'))
-    
+
     # 角度設定（7角形）
     angles = [i * 2 * np.pi / 7 for i in range(7)]
     angles += angles[:1]  # 閉じるために最初の角度を追加
-    
-    # 色・スタイル設定（保有銘柄は特別な色で表示）
-    colors = ['#FF6B6B', '#4ECDC4', '#45B7D1', '#96CEB4', '#FFEAA7', '#DDA0DD', '#98D8C7']
-    alphas = [0.25, 0.25, 0.25, 0.25, 0.25, 0.25, 0.25]
-    linewidths = [3.0, 2.5, 2.5, 2.0, 2.0, 2.0, 2.0]
-    
-    max_stocks = min(len(stocks_data), len(colors))
-    
+
+    # カラーパレット: 非保有銘柄用と保有銘柄用を分ける
+    non_holding_palette = ['#FF6B6B', '#45B7D1', '#96CEB4', '#FFEAA7', '#DDA0DD', '#98D8C7']
+    holding_palette = ['#2F4B8F', '#FF8C00']  # 保有銘柄は目立つ別系統カラー
+    alphas = 0.25
+    linewidth_default = 2.5
+
+    # カウンタを用意して、それぞれのリストで色を割り当てる
+    non_holding_idx = 0
+    holding_idx = 0
+
+    max_stocks = len(stocks_data)
     for i in range(max_stocks):
         stock = stocks_data[i]
         values = stock['scores'] + [stock['scores'][0]]  # 閉じる
-        
-        # 保有銘柄かどうかでスタイルを変える
+
         is_holding = stock.get('is_holding', False)
-        line_style = '-' if not is_holding else '--'
-        marker_style = 'o' if not is_holding else 's'
-        
-        ax.plot(angles, values, marker=marker_style, linestyle=line_style, 
-                linewidth=linewidths[i], color=colors[i], 
-                label=f"{stock['name']} {'(保有)' if is_holding else ''}")
-        ax.fill(angles, values, color=colors[i], alpha=alphas[i])
+        if is_holding:
+            color = holding_palette[holding_idx % len(holding_palette)]
+            holding_idx += 1
+            line_style = '--'
+            marker_style = 's'
+            lw = linewidth_default + 0.5
+        else:
+            color = non_holding_palette[non_holding_idx % len(non_holding_palette)]
+            non_holding_idx += 1
+            line_style = '-'
+            marker_style = 'o'
+            lw = linewidth_default
+
+        ax.plot(angles, values, marker=marker_style, linestyle=line_style,
+                linewidth=lw, color=color,
+                label=f"{stock.get('name', stock.get('code'))}{' (保有)' if is_holding else ''}")
+        ax.fill(angles, values, color=color, alpha=alphas)
     
     # レーダーチャート装飾（japanize_matplotlib が自動でフォント設定）
     ax.set_xticks(angles[:-1])
@@ -134,7 +147,8 @@ def create_stock_price_chart(code, stock_name, headers):
     """株価チャート作成（過去2年間日足）"""
     
     # 2年間の期間設定
-    end_date = datetime(2025, 9, 26)  # 実運用時は datetime.now()
+    #end_date = datetime(2025, 9, 26)  # 実運用時は datetime.now()
+    end_date = datetime.now()
     start_date = end_date - timedelta(days=730)
     end_date_str = end_date.strftime('%Y%m%d')
     start_date_str = start_date.strftime('%Y%m%d')
@@ -246,8 +260,22 @@ def main():
         return {}
 
     code_to_name = fetch_company_names(headers)
-    top3_stocks = step2_results['top3_stocks']
-    holding_stocks = step2_results['holding_stocks']
+    top3_stocks = step2_results.get('top3_stocks', [])
+    holding_stocks = step2_results.get('holding_stocks', [])
+
+    # Ensure holdings and top3 have resolved display names (prefer exchange mapping)
+    def resolve_name_for_stock(s):
+        code = str(s.get('code', '')).zfill(4)
+        resolved = code_to_name.get(code)
+        if resolved:
+            s['name'] = resolved
+        else:
+            # keep existing name if present, otherwise fallback to code
+            s['name'] = s.get('name') or code
+        return s
+
+    holding_stocks = [resolve_name_for_stock(s) for s in holding_stocks]
+    top3_stocks = [resolve_name_for_stock(s) for s in top3_stocks]
     
     print(f"\\n=== ステップ3: チャート作成開始 ===")
     
@@ -365,7 +393,7 @@ def main():
     lines.append("\n=== 保有銘柄 ===\n")
     for h in holding_stocks:
         code = str(h.get('code','')).zfill(4)
-        display_name = code_to_name.get(code) or h.get('name') or code
+        display_name = h.get('name') or code_to_name.get(code) or code
         lines.append(f"- {code} {display_name}  総合スコア:{h.get('comprehensive_score',0):.4f}")
 
     lines.append("\n=== 株価チャート要約 ===\n")

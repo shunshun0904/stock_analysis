@@ -566,8 +566,8 @@ def main():
     headers = {"Authorization": f"Bearer {ID_TOKEN}"}
     
     # 日付設定（65週前）
-    # today = datetime.now()  # 実運用時は datetime.now()
-    today = datetime(2025, 9, 25)
+    today = datetime.now()  # 実運用時は datetime.now()
+    #today = datetime(2025, 9, 25)
     start_date_65w = today - timedelta(weeks=65)
     today_str = today.strftime('%Y%m%d')
     start_date_str = start_date_65w.strftime('%Y%m%d')
