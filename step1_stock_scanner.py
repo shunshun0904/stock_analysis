@@ -7,9 +7,80 @@ from datetime import datetime, timedelta
 import time
 import os
 import json
+import traceback
+import sys
+# Configuration / defaults
+# Prefer JQUANTS_TOKEN (may be access token or refresh token) from environment
+_raw_token_env = os.environ.get('JQUANTS_TOKEN')
+
+def exchange_refresh_for_idtoken(refresh_token: str):
+    """If the provided token is a refresh token, exchange it for an idToken via auth_refresh.
+    Returns idToken string on success, or None."""
+    if not refresh_token:
+        return None
+    try:
+        # POST to /v1/token/auth_refresh?refreshtoken=...
+        url = f"https://api.jquants.com/v1/token/auth_refresh?refreshtoken={refresh_token}"
+        r = requests.post(url, timeout=15)
+        if r.status_code == 200:
+            j = r.json()
+            idt = j.get('idToken') or j.get('id_token')
+            if idt:
+                return idt
+        return None
+    except Exception:
+        return None
+
+
+# Resolve ID_TOKEN: try exchanging env token as a refresh token, else use as-is
+ID_TOKEN = None
+if _raw_token_env:
+    exchanged = exchange_refresh_for_idtoken(_raw_token_env)
+    if exchanged:
+        ID_TOKEN = exchanged
+    else:
+        # assume env contains an access/id token already
+        ID_TOKEN = _raw_token_env
+
+# Output file for step1
+OUTPUT_FILE = os.environ.get('STEP1_OUTPUT_FILE', 'step1_results.json')
+# Holding codes to always check (can be overridden by env var like 'HOLDING_CODES=1234,5678')
+HOLDING_CODES = []
+hc_env = os.environ.get('HOLDING_CODES')
+if hc_env:
+    try:
+        HOLDING_CODES = [c.strip() for c in hc_env.split(',') if c.strip()]
+    except Exception:
+        HOLDING_CODES = []
+
+
+def request_with_retry(url, params=None, headers=None, method='get', max_retries=3, backoff=1.0, timeout=30):
+    """Simple retry wrapper around requests.get/post. Returns requests.Response or None."""
+    for attempt in range(1, max_retries + 1):
+        try:
+            if method.lower() == 'post':
+                resp = requests.post(url, params=params, headers=headers, timeout=timeout)
+            else:
+                resp = requests.get(url, params=params, headers=headers, timeout=timeout)
+            return resp
+        except Exception as e:
+            if attempt == max_retries:
+                return None
+            time.sleep(backoff * attempt)
 def get_id_token_from_credentials():
     """Obtain an id token using JQUANTS_MAIL / JQUANTS_PASSWORD if provided.
     Returns token string or None."""
+    # First, if the environment JQUANTS_TOKEN contains a refresh token, exchange it
+    env_token = os.environ.get('JQUANTS_TOKEN') or os.environ.get('JQUANTS_ACCESS_TOKEN')
+    if env_token:
+        try:
+            idt = exchange_refresh_for_idtoken(env_token)
+            if idt:
+                return idt
+        except Exception:
+            pass
+
+    # Fallback to mail/password flow if provided
     mail = os.environ.get('JQUANTS_MAIL')
     password = os.environ.get('JQUANTS_PASSWORD')
     if not mail or not password:
@@ -20,9 +91,15 @@ def get_id_token_from_credentials():
                           timeout=30)
         r.raise_for_status()
         refresh_token = r.json().get('refreshToken')
-        r2 = requests.post('https://api.jquants.com/v1/token/auth_refresh', params={'refreshtoken': refresh_token}, timeout=30)
-        r2.raise_for_status()
-        return r2.json().get('idToken')
+        # exchange refresh token for idToken
+        if refresh_token:
+            try:
+                r2 = requests.post(f'https://api.jquants.com/v1/token/auth_refresh?refreshtoken={refresh_token}', timeout=30)
+                r2.raise_for_status()
+                return r2.json().get('idToken')
+            except Exception:
+                return None
+        return None
     except Exception as e:
         print(f"認証トークン取得失敗: {e}")
         return None
@@ -298,152 +375,7 @@ def get_actual_market_data(code, headers):
             'market_cap_jpy': None,
             'roe': None
         }
-                    # MarketCapitalization があればそれを優先（億円単位）
-                    mc = info.get('MarketCapitalization') or info.get('marketCapitalization')
-                    if mc not in (None, ''):
-                        try:
-                            market_cap_okuyen = float(mc)
-                        except Exception:
-                            market_cap_okuyen = None
-                    # 発行済株式数（候補フィールド）
-                    for key in ('IssuedShareSummaryOfBusinessResults', 'issuedShares', 'IssuedShares', 'sharesOutstanding', 'SharesOutstanding'):
-                        if key in info and info.get(key) not in (None, ''):
-                            try:
-                                issued_shares = int(info.get(key))
-                                break
-                            except Exception:
-                                pass
-        except Exception as e:
-            print(f"listed/info 取得時に例外: {e}")
 
-        # 2) daily_quotes で最新の終値を取得（直近7営業日を検索）
-        price_url = "https://api.jquants.com/v1/prices/daily_quotes"
-        # today = datetime.now()
-        today = datetime(2025, 9, 25)
-        to_date = today.strftime('%Y%m%d')
-        from_date = (today - timedelta(days=14)).strftime('%Y%m%d')
-        p_resp = request_with_retry(price_url, params={'code': code, 'from': from_date, 'to': to_date}, headers=headers)
-        latest_close = None
-        if p_resp and p_resp.status_code == 200:
-            try:
-                pdj = p_resp.json()
-                dq = pdj.get('daily_quotes') or pdj.get('data') or []
-                if dq:
-                    df = pd.DataFrame(dq)
-                    df['Date'] = pd.to_datetime(df['Date'])
-                    df = df.sort_values('Date')
-                    df['Close'] = pd.to_numeric(df['Close'], errors='coerce')
-                    # 最新の有効な終値を探す
-                    valid = df['Close'].dropna()
-                    if len(valid) > 0:
-                        latest_close = float(valid.iloc[-1])
-            except Exception as e:
-                print(f"daily_quotes JSONパース/処理エラー: {e}")
-
-        # 3) 発行済株式数が取得できれば正確に時価総額を算出
-        market_cap_okuyen = None
-        if issued_shares and latest_close:
-            # market cap in JPY = issued_shares * latest_close
-            # convert to 億円単位
-            try:
-                market_cap_okuyen = (issued_shares * latest_close) / 1e8
-            except Exception:
-                market_cap_okuyen = None
-
-        # 4) PER の取得: 可能なら財務情報から EPS を探して計算
-        per = None
-        try:
-            # Try fins/statements first for IssuedShareSummaryOfBusinessResults and EPS-like fields
-            fin_resp = request_with_retry(f"https://api.jquants.com/v1/fins/statements", params={'code': code}, headers=headers)
-            if fin_resp and fin_resp.status_code == 200:
-                fj = fin_resp.json()
-                # 構造は API 依存だが、純利益やEPSがあれば利用する
-                # 試しに recentNetIncome, eps, 一株利益 などのキーを探す
-                candidates = []
-                if isinstance(fj, dict):
-                    # flatten common patterns
-                    if 'statements' in fj and isinstance(fj['statements'], list) and fj['statements']:
-                        candidates = fj['statements']
-                    elif 'financials' in fj and isinstance(fj['financials'], list) and fj['financials']:
-                        candidates = fj['financials']
-                    elif 'data' in fj and isinstance(fj['data'], list) and fj['data']:
-                        candidates = fj['data']
-                    else:
-                        candidates = [fj]
-
-                eps_value = None
-                profit_value = None
-                for item in candidates:
-                    if not isinstance(item, dict):
-                        continue
-                    # Try to extract issued shares from fins/statements if not already found
-                    if issued_shares is None:
-                        for key in ('IssuedShareSummaryOfBusinessResults', 'issuedShares', 'IssuedShares', 'sharesOutstanding'):
-                            if key in item and item.get(key) not in (None, ''):
-                                try:
-                                    issued_shares = int(item.get(key))
-                                    break
-                                except Exception:
-                                    pass
-                    for key in ('eps', 'EPS', 'oneShareEarnings', 'BasicEPS', 'earningsPerShare'):
-                        if key in item and item.get(key) not in (None, ''):
-                            try:
-                                eps_value = float(item.get(key))
-                                break
-                            except Exception:
-                                pass
-                    # Profit / NetIncome の候補を探す
-                    for pkey in ('Profit', 'NetIncome', 'ProfitAfterTax', 'NetIncomeLoss'):
-                        if pkey in item and item.get(pkey) not in (None, ''):
-                            try:
-                                profit_value = float(item.get(pkey))
-                                break
-                            except Exception:
-                                pass
-                    if eps_value is not None and profit_value is not None:
-                        # 発行済株式数を推定: shares = Profit / EPS
-                        try:
-                            if eps_value != 0:
-                                estimated_shares = profit_value / eps_value
-                                # round to nearest integer
-                                issued_shares = int(round(estimated_shares))
-                        except Exception:
-                            pass
-                    if eps_value is not None:
-                        break
-
-                # If EPS found, compute PER using latest_close / EPS (安定した計算)
-                if eps_value is not None and latest_close is not None:
-                    try:
-                        per = latest_close / eps_value
-                    except Exception:
-                        per = None
-                else:
-                    # If EPS not available, leave per None for later fallback
-                    per = None
-        except Exception as e:
-            print(f"financials 取得時に例外: {e}")
-
-        # 最終フォールバック: 既存の簡易推定（安定したデフォルト）
-        if market_cap_okuyen is None:
-            # try coarse fallback: use latest_close and estimate shares from listed/info 'IssuedShares' if present in other formats
-            if latest_close:
-                fallback_shares = issued_shares or 10_000_000
-                try:
-                    market_cap_okuyen = (fallback_shares * latest_close) / 1e8
-                except Exception:
-                    market_cap_okuyen = 50.0
-            else:
-                market_cap_okuyen = 50.0
-
-        if per is None:
-            # deterministic pseudo-random but stable fallback
-            per = 15.0 + (abs(hash(code)) % 20)
-
-        return float(market_cap_okuyen), float(per)
-    except Exception as e:
-        print(f"get_actual_market_data で例外発生: {e}")
-        return 50.0, 15.0
 
 def check_65w_high_intraday(code, today_date, start_date, headers):
     """65週新高値判定（日中高値のみ）"""
@@ -503,6 +435,25 @@ def check_65w_high_intraday(code, today_date, start_date, headers):
 def main():
     """ステップ1: 完全版スキャン + 市場データ取得 + 結果保存"""
     
+    # Ensure ID_TOKEN is resolved: try exchanging raw env token or credentials if needed
+    global ID_TOKEN
+    if not ID_TOKEN:
+        # try exchange again if raw env provided
+        try:
+            raw = os.environ.get('JQUANTS_TOKEN') or os.environ.get('JQUANTS_ACCESS_TOKEN') or os.environ.get('ID_TOKEN')
+            if raw:
+                exchanged = exchange_refresh_for_idtoken(raw)
+                if exchanged:
+                    ID_TOKEN = exchanged
+        except Exception:
+            pass
+        # fallback to credentials flow
+        if not ID_TOKEN:
+            try:
+                ID_TOKEN = get_id_token_from_credentials()
+            except Exception:
+                ID_TOKEN = None
+
     headers = {"Authorization": f"Bearer {ID_TOKEN}"}
     
     # 日付設定（65週前）
@@ -691,9 +642,28 @@ def main():
     return True
 
 if __name__ == "__main__":
-    success = main()
-    if success:
-        print(f"\\n✓ ステップ1正常完了")
-        print(f"次ステップ: python step2_metrics_analysis.py")
-    else:
-        print(f"\\n✗ ステップ1でエラーが発生")
+    try:
+        success = main()
+        if success:
+            print(f"\n✓ ステップ1正常完了")
+            print(f"次ステップ: python step2_metrics_analysis.py")
+            sys.exit(0)
+        else:
+            print(f"\n✗ ステップ1でエラーが発生")
+            # Write a short message to help debugging
+            msg = "ステップ1がエラーで終了しました。詳細は step1_error.log を確認してください。"
+            print(msg)
+            # ensure we have some trace info if any exception was caught earlier
+            try:
+                tb = traceback.format_exc()
+            except Exception:
+                tb = "No traceback available"
+            with open('step1_error.log', 'w', encoding='utf-8') as ef:
+                ef.write(msg + "\n\n" + tb)
+            sys.exit(1)
+    except Exception:
+        tb = traceback.format_exc()
+        print(f"Unhandled exception in main():\n{tb}")
+        with open('step1_error.log', 'w', encoding='utf-8') as ef:
+            ef.write(tb)
+        sys.exit(1)
