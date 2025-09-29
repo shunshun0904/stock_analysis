@@ -1,7 +1,3 @@
-                if latest_close is not None:
-                    print(f"✓ {stock['name']}: 時価総額{market_cap}億円, PER{per}倍 - {status}")
-# 新高値ブレイク法システム - ステップ2: データ読み込み対応版分析
-
 import json
 import time
 import pandas as pd

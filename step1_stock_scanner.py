@@ -153,6 +153,115 @@ def get_close_on_date(code: str, date_yyyy_mm_dd: str, headers: dict) -> float:
         raise e
 
 
+    def compute_roe_from_jquants(code: str, headers: dict):
+        """Compute ROE using J-Quants /fins/statements and /fins/fs_details.
+
+        Steps (per user spec):
+        - Retrieve two latest FY statements from /fins/statements and extract Equity for period-start and period-end
+        - Retrieve fs_details for the two disclosed dates and extract "Non-controlling interests (IFRS)" and
+          "Profit (loss) attributable to owners of parent (IFRS)" (profit is taken from the current period)
+        - Compute Owners' Equity = Equity - Non-controlling interests for period-start and period-end
+        - Average = (owners_equity_start + owners_equity_end) / 2
+        - ROE = profit_attributable_to_owners / average_owners_equity
+
+        Returns float ROE (e.g., 0.12 for 12%) or None when cannot compute.
+        """
+        try:
+            # Fetch statements
+            resp = request_with_retry('https://api.jquants.com/v1/fins/statements', params={'code': code}, headers=headers)
+            if not resp or resp.status_code != 200:
+                return None
+            data = resp.json()
+            stmts = []
+            if isinstance(data, dict):
+                stmts = data.get('statements') or data.get('data') or []
+            elif isinstance(data, list):
+                stmts = data
+            # filter FY rows
+            fy = [r for r in stmts if r.get('TypeOfCurrentPeriod') == 'FY']
+            if len(fy) < 2:
+                return None
+            # sort by period end / disclosed date
+            fy.sort(key=lambda r: (r.get('CurrentPeriodEndDate') or '', r.get('DisclosedDate') or ''))
+            prev = fy[-2]
+            curr = fy[-1]
+
+            # extract Equity values
+            def _num(v):
+                try:
+                    return float(v)
+                except Exception:
+                    return None
+
+            equity_prev = _num(prev.get('Equity'))
+            equity_curr = _num(curr.get('Equity'))
+
+            # fetch fs_details for both disclosed dates
+            disclosed_prev = prev.get('DisclosedDate') or prev.get('CurrentPeriodEndDate')
+            disclosed_curr = curr.get('DisclosedDate') or curr.get('CurrentPeriodEndDate')
+            if not disclosed_prev or not disclosed_curr:
+                return None
+
+            fs_prev_resp = request_with_retry('https://api.jquants.com/v1/fins/fs_details', params={'code': code, 'date': disclosed_prev}, headers=headers)
+            fs_curr_resp = request_with_retry('https://api.jquants.com/v1/fins/fs_details', params={'code': code, 'date': disclosed_curr}, headers=headers)
+            if not fs_prev_resp or fs_prev_resp.status_code != 200 or not fs_curr_resp or fs_curr_resp.status_code != 200:
+                return None
+
+            fp = fs_prev_resp.json().get('fs_details') or fs_prev_resp.json()
+            fc = fs_curr_resp.json().get('fs_details') or fs_curr_resp.json()
+            if isinstance(fp, list) and fp:
+                fp = fp[0]
+            if isinstance(fc, list) and fc:
+                fc = fc[0]
+
+            fin_prev = fp.get('FinancialStatement') if isinstance(fp, dict) else fp
+            fin_curr = fc.get('FinancialStatement') if isinstance(fc, dict) else fc
+
+            # Non-controlling interests
+            def _get_nci(fdict):
+                if not fdict or not isinstance(fdict, dict):
+                    return None
+                for key in ('Non-controlling interests (IFRS)', 'Non-controlling interests'):
+                    if key in fdict and fdict.get(key) not in (None, '', 'NaN'):
+                        try:
+                            return float(fdict.get(key))
+                        except Exception:
+                            return None
+                return None
+
+            nci_prev = _get_nci(fin_prev)
+            nci_curr = _get_nci(fin_curr)
+
+            if equity_prev is None or equity_curr is None:
+                return None
+            if nci_prev is None or nci_curr is None:
+                return None
+
+            owners_equity_prev = equity_prev - nci_prev
+            owners_equity_curr = equity_curr - nci_curr
+            avg_owners_equity = (owners_equity_prev + owners_equity_curr) / 2.0
+
+            # profit attributable to owners from current period
+            profit_to_owners = None
+            if isinstance(fin_curr, dict):
+                for key in ('Profit (loss) attributable to owners of parent (IFRS)', 'Profit (loss) attributable to owners of parent'):
+                    if key in fin_curr and fin_curr.get(key) not in (None, '', 'NaN'):
+                        try:
+                            profit_to_owners = float(fin_curr.get(key))
+                            break
+                        except Exception:
+                            profit_to_owners = None
+                            break
+
+            if profit_to_owners is None or avg_owners_equity == 0:
+                return None
+
+            roe = profit_to_owners / avg_owners_equity
+            return roe
+        except Exception:
+            return None
+
+
 def get_actual_market_data(code, headers):
     """実際の時価総額・PER・EPS・発行済株式数・ROEを公表値（期末）から算出して返す。
 
@@ -293,49 +402,9 @@ def get_actual_market_data(code, headers):
                 per = None
 
         # 5) Try compute ROE using two-year average equity if possible
+        # Use a dedicated helper that implements the J-Quants recommended approach
         try:
-            roe = None
-            # get two latest FY statements
-            if fin_resp and fin_resp.status_code == 200:
-                stmt_list = statements
-                fy_candidates = [r for r in stmt_list if r.get('TypeOfCurrentPeriod') == 'FY']
-                if len(fy_candidates) >= 2:
-                    # sort by end date
-                    fy_candidates.sort(key=lambda r: (r.get('CurrentPeriodEndDate') or '', r.get('DisclosedDate') or ''))
-                    prev = fy_candidates[-2]
-                    curr = fy_candidates[-1]
-                    equity_prev = float(prev.get('Equity')) if prev.get('Equity') not in (None, '', 'NaN') else None
-                    equity_curr = float(curr.get('Equity')) if curr.get('Equity') not in (None, '', 'NaN') else None
-                    # fs_details for profit_to_owners at curr
-                    profit_to_owners = None
-                    try:
-                        disclosed_prev = prev.get('DisclosedDate') or prev.get('CurrentPeriodEndDate')
-                        disclosed_curr = curr.get('DisclosedDate') or curr.get('CurrentPeriodEndDate')
-                        if disclosed_prev and disclosed_curr:
-                            fs_prev = request_with_retry('https://api.jquants.com/v1/fins/fs_details', params={'code': code, 'date': disclosed_prev}, headers=used_headers)
-                            fs_curr = request_with_retry('https://api.jquants.com/v1/fins/fs_details', params={'code': code, 'date': disclosed_curr}, headers=used_headers)
-                            if fs_prev and fs_prev.status_code == 200 and fs_curr and fs_curr.status_code == 200:
-                                fp = fs_prev.json().get('fs_details') or fs_prev.json()
-                                fc = fs_curr.json().get('fs_details') or fs_curr.json()
-                                # extract profit_to_owners from current
-                                if isinstance(fc, list) and fc:
-                                    fc = fc[0]
-                                fin_curr = fc.get('FinancialStatement') if isinstance(fc, dict) else None
-                                if fin_curr and isinstance(fin_curr, dict):
-                                    for pkey in ('Profit (loss) attributable to owners of parent (IFRS)', 'Profit (loss) attributable to owners of parent'):
-                                        if pkey in fin_curr and fin_curr.get(pkey) not in (None, '', 'NaN'):
-                                            try:
-                                                profit_to_owners = float(fin_curr.get(pkey))
-                                            except Exception:
-                                                profit_to_owners = None
-                                                break
-                    except Exception:
-                        profit_to_owners = None
-
-                    if profit_to_owners is not None and equity_prev is not None and equity_curr is not None:
-                        avg_equity = (equity_prev + equity_curr) / 2.0
-                        if avg_equity != 0:
-                            roe = profit_to_owners / avg_equity
+            roe = compute_roe_from_jquants(code, used_headers)
         except Exception:
             roe = None
 
@@ -538,9 +607,18 @@ def main():
                     'total_days': total_days
                 })
                 
+                # include ROE if available
+                try:
+                    # our helper returns (market_cap, per) but roe is fetched inside and stored via compute_roe function
+                    # call compute_roe_from_jquants separately to ensure availability
+                    roe_val = compute_roe_from_jquants(code, {'Authorization': f'Bearer {ID_TOKEN}'} if ID_TOKEN else headers)
+                except Exception:
+                    roe_val = None
+
                 market_data_dict[code] = {
                     'market_cap': market_cap,
-                    'per': per
+                    'per': per,
+                    'roe': roe_val
                 }
             time.sleep(0.1)  # API制限対策
         
@@ -561,14 +639,17 @@ def main():
         # 保有銘柄の市場データを必ず取得
         market_cap, per = get_actual_market_data(code, headers)
         try:
+            roe_val = compute_roe_from_jquants(code, {'Authorization': f'Bearer {ID_TOKEN}'} if ID_TOKEN else headers)
             market_data_dict[code] = {
                 'market_cap': float(market_cap),
-                'per': float(per)
+                'per': float(per),
+                'roe': roe_val
             }
         except Exception:
             market_data_dict[code] = {
                 'market_cap': market_cap,
-                'per': per
+                'per': per,
+                'roe': None
             }
 
         stock_info = next((s for s in all_stocks if s['Code'] == code), None)
