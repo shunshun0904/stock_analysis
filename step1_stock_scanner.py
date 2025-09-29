@@ -5,6 +5,8 @@ import pandas as pd
 import numpy as np
 from datetime import datetime, timedelta
 import time
+import os
+import json
 def get_id_token_from_credentials():
     """Obtain an id token using JQUANTS_MAIL / JQUANTS_PASSWORD if provided.
     Returns token string or None."""
@@ -79,7 +81,6 @@ def get_actual_market_data(code, headers):
 
     戻り値: dict with keys: market_cap (億円), per, eps, issued_shares, latest_close, market_cap_jpy, roe
     """
-import json
     try:
         # Determine token to use: prefer provided headers token, else try mail/password
         token = None
