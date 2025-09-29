@@ -1,10 +1,10 @@
 name: Run stock analysis pipeline
 
-on:
-  schedule:
+#on:
+  #schedule:
     # JST 平日 17:00 -> UTC 08:00 (JST = UTC+9)
-    - cron: '0 8 * * 1-5'
-  workflow_dispatch: {}
+  #  - cron: '0 8 * * 1-5'
+  #workflow_dispatch: {}
 
 jobs:
   run-pipeline:
