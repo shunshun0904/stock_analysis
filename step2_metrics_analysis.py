@@ -66,6 +66,69 @@ def load_step1_results(path='step1_results.json'):
         return None
 
 
+def get_7_metrics(code, headers=None):
+    """ステップ1の出力 (`step1_results.json`) を参照して7指標を返す。
+
+    戻り値は key->数値 の dict。呼び出し側でさらに 'new_high_count' を上書きするため
+    ここでは主に market_data に入った値を安全に取り出す。
+    """
+    try:
+        step1 = load_step1_results()
+        if not step1:
+            return {}
+
+        md = step1.get('market_data', {}).get(code, {}) or {}
+
+        # 指標候補（安全に数値化）
+        new_high_count = float(md.get('new_high_count') or md.get('newHighCount') or 0)
+        volume_ratio = float(md.get('volume_ratio') or md.get('volumeRatio') or 0)
+        roe = md.get('roe')
+        roe = float(roe) if roe is not None else 0.0
+
+        per = md.get('per')
+        try:
+            per_val = float(per) if per is not None else None
+        except Exception:
+            per_val = None
+
+        # PERは低い方が割安（ここでは逆数を取ることでスコア化）
+        per_inv = 1.0 / (per_val + 1) if per_val and per_val > 0 else 0.0
+
+        market_cap = md.get('market_cap') or md.get('marketCap')
+        try:
+            market_cap_val = float(market_cap) if market_cap is not None else None
+        except Exception:
+            market_cap_val = None
+
+        # 時価総額も小さい方がスクリーニングに有利と仮定し逆数化
+        market_cap_inv = 1.0 / (market_cap_val + 1) if market_cap_val and market_cap_val > 0 else 0.0
+
+        eps = md.get('eps') or md.get('EarningsPerShare') or 0.0
+        try:
+            eps_val = float(eps)
+        except Exception:
+            eps_val = 0.0
+
+        volatility = md.get('volatility') or md.get('vol') or 0.0
+        try:
+            vol_val = float(volatility)
+        except Exception:
+            vol_val = 0.0
+
+        return {
+            'new_high_count': new_high_count,
+            'volume_ratio': volume_ratio,
+            'roe': roe,
+            'per_inv': per_inv,
+            'market_cap_inv': market_cap_inv,
+            'eps': eps_val,
+            'volatility': vol_val,
+        }
+    except Exception as e:
+        print(f"get_7_metrics internal error for {code}: {e}")
+        return {}
+
+
 def main():
     """ステップ2: 7指標分析・スコア算出・条件フィルタ"""
 
