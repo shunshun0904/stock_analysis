@@ -1,0 +1,57 @@
+name: Run stock analysis pipeline
+
+on:
+  schedule:
+    # JST 平日 17:00 -> UTC 08:00 (JST = UTC+9)
+    - cron: '0 8 * * 1-5'
+  workflow_dispatch: {}
+
+jobs:
+  run-pipeline:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v4
+        with:
+          python-version: '3.11'
+
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          if [ -f requirements.txt ]; then pip install -r requirements.txt; fi
+
+      - name: Install Noto Sans JP for matplotlib
+        run: |
+          sudo apt-get update && sudo apt-get install -y fonts-noto-cjk
+
+      - name: Run step1
+        env:
+          JQUANTS_TOKEN: ${{ secrets.JQUANTS_TOKEN }}
+          JQUANTS_MAIL: ${{ secrets.JQUANTS_MAIL }}
+          JQUANTS_PASSWORD: ${{ secrets.JQUANTS_PASSWORD }}
+        run: |
+          set -e
+          python step1_stock_scanner.py || true
+
+      - name: Run step2
+        run: |
+          set -e
+          python step2_metrics_analysis.py || true
+
+      - name: Upload step1 and step2 JSON artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: step-results
+          path: |
+            step1_results.json
+            step2_results.json
+
+      - name: Show small sample of outputs
+        run: |
+          echo "==== step1_results.json (first 200 chars) ===="
+          if [ -f step1_results.json ]; then head -c 200 step1_results.json | sed -n '1,200p'; else echo 'missing'; fi
+          echo "\n==== step2_results.json (first 200 chars) ===="
+          if [ -f step2_results.json ]; then head -c 200 step2_results.json | sed -n '1,200p'; else echo 'missing'; fi
