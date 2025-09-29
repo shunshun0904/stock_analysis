@@ -46,6 +46,15 @@ def ensure_japanese_font():
             except Exception:
                 # addfont may still work even if it raises; continue
                 pass
+            # Rebuild font manager cache to ensure new font is available to matplotlib
+            try:
+                font_manager._rebuild()
+            except Exception:
+                try:
+                    # fallback: reinitialize fontManager
+                    font_manager.fontManager = font_manager.FontManager()
+                except Exception:
+                    pass
             try:
                 fp = font_manager.FontProperties(fname=tmp_path)
                 font_name = fp.get_name()

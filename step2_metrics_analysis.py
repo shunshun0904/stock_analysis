@@ -2,68 +2,74 @@
 
 import pandas as pd
 import numpy as np
-import requests
-import time
-import json
-import warnings
-warnings.filterwarnings('ignore')
+    # ===== 条件フィルタ適用 =====
+    print(f"\n=== 時価総額・PER条件フィルタ適用 ===")
+    print("条件: 時価総額200億円以下 AND PER10倍以上（保有銘柄は除外対象外）")
 
-INPUT_FILE = "step1_results.json"
-OUTPUT_FILE = "step2_results.json"
-HOLDING_CODES = ['5621', '5527']
+    qualified_stocks = []
+    excluded_stocks = []
 
-def load_step1_results():
-    """ステップ1の結果を読み込み"""
-    try:
-        with open(INPUT_FILE, 'r', encoding='utf-8') as f:
-            results = json.load(f)
-        
-        print(f"✓ ステップ1結果読み込み成功: {INPUT_FILE}")
-        print(f"  新高値更新銘柄: {results['summary']['total_new_high']}件")
-        print(f"  市場データ: {len(results['market_data'])}件")
-        
-        return results
-    except FileNotFoundError:
-        print(f"✗ {INPUT_FILE}が見つかりません")
-        print("先にステップ1を実行してください: python step1_stock_scanner.py")
-        return None
-    except Exception as e:
-        print(f"✗ ステップ1結果読み込みエラー: {e}")
-        return None
+    for stock in final_scores:
+        code = stock['code']
+        is_holding = stock['is_holding']
 
-def get_7_metrics(code, headers):
-    """7指標を取得（これまでの実装と同じ）"""
-    metrics = {
-        'new_high_count': 0,
-        'volume_ratio': 1.0,
-        'sales_growth': 0.0,
-        'op_growth': 0.0,
-        'roe_avg': 0.0,
-        'equity_ratio': 0.0,
-        'free_cf': 0.0
-    }
-    
-    try:
-        # 出来高急増率（直近5日 vs 過去20日）
-        url = f"https://api.jquants.com/v1/prices/daily_quotes"
-        params = {'code': code, 'from': '20250901', 'to': '20250926'}
-        response = requests.get(url, params=params, headers=headers)
-        
-        if response.status_code == 200:
-            data = response.json()
-            if 'daily_quotes' in data and data['daily_quotes']:
-                df = pd.DataFrame(data['daily_quotes'])
-                df['Volume'] = pd.to_numeric(df['Volume'], errors='coerce')
-                if len(df) >= 25:
-                    recent_5_avg = df['Volume'].tail(5).mean()
-                    past_20_avg = df['Volume'].iloc[-25:-5].mean()
-                    if past_20_avg > 0:
-                        metrics['volume_ratio'] = recent_5_avg / past_20_avg
-        
-        # 財務データ取得
-        url = f"https://api.jquants.com/v1/fins/statements"
-        params = {'code': code}
-        response = requests.get(url, params=params, headers=headers)
+        if code in market_data:
+            md = market_data[code]
+            market_cap = md.get('market_cap')
+            per = md.get('per')
+            # optional raw fields
+            issued_shares = md.get('issued_shares') or md.get('issuedShares') or md.get('issued_share')
+            latest_close = md.get('latest_close')
+            market_cap_jpy = md.get('market_cap_jpy')
+            eps = md.get('eps') or md.get('EarningsPerShare')
+
+            # 保有銘柄は条件関係なく含める
+            if is_holding or (market_cap is not None and per is not None and market_cap <= 200 and per >= 10):
+                stock['market_cap'] = market_cap
+                stock['per'] = per
+                # attach raw fields if available for traceability
+                if issued_shares is not None:
+                    stock['issued_shares'] = issued_shares
+                if latest_close is not None:
+                    stock['latest_close'] = latest_close
+                if market_cap_jpy is not None:
+                    stock['market_cap_jpy'] = market_cap_jpy
+                if eps is not None:
+                    stock['eps'] = eps
+                stock['qualified'] = True
+                qualified_stocks.append(stock)
+
+                status = "(保有)" if is_holding else "条件クリア"
+                try:
+                    print(f"✓ {stock['name']}: 時価総額{market_cap:.0f}億円, PER{per:.1f}倍 - {status}")
+                except Exception:
+                    print(f"✓ {stock['name']}: 時価総額{market_cap}億円, PER{per}倍 - {status}")
+            else:
+                # 除外理由
+                reasons = []
+                try:
+                    if market_cap is not None and market_cap > 200:
+                        reasons.append(f"時価総額{market_cap:.0f}億円>200億円")
+                except Exception:
+                    pass
+                if per is None or per < 10:
+                    reasons.append(f"PER{(per if per is not None else 'N/A') }倍<10倍")
+
+                ex_entry = {
+                    'code': code,
+                    'name': stock['name'],
+                    'comprehensive_score': stock['comprehensive_score'],
+                    'reason': ', '.join(reasons)
+                }
+                # attach raw fields for excluded too
+                if issued_shares is not None:
+                    ex_entry['issued_shares'] = issued_shares
+                if latest_close is not None:
+                    ex_entry['latest_close'] = latest_close
+                excluded_stocks.append(ex_entry)
+                print(f"✗ {stock['name']}: {', '.join(reasons)}")
+        else:
+            print(f"⚠ {stock['name']}: 市場データなし")
         
         if response.status_code == 200:
             data = response.json()
@@ -300,7 +306,7 @@ def main():
     
     # ===== 条件フィルタ適用 =====
     print(f"\\n=== 時価総額・PER条件フィルタ適用 ===")
-    print("条件: 時価総額250億円以下 AND PER10倍以上（保有銘柄は除外対象外）")
+        print("条件: 時価総額200億円以下 AND PER10倍以上（保有銘柄は除外対象外）")
     
     qualified_stocks = []
     excluded_stocks = []
@@ -320,7 +326,7 @@ def main():
             eps = md.get('eps') or md.get('EarningsPerShare')
             
             # 保有銘柄は条件関係なく含める
-            if is_holding or (market_cap <= 250 and per >= 10):
+                if is_holding or (market_cap <= 200 and per >= 10):
                 stock['market_cap'] = market_cap
                 stock['per'] = per
                 # attach raw fields if available for traceability
@@ -340,8 +346,8 @@ def main():
             else:
                 # 除外理由
                 reasons = []
-                if market_cap > 250:
-                    reasons.append(f"時価総額{market_cap:.0f}億円>250億円")
+                    if market_cap > 200:
+                        reasons.append(f"時価総額{market_cap:.0f}億円>200億円")
                 if per < 10:
                     reasons.append(f"PER{per:.1f}倍<10倍")
                 
