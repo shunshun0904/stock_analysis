@@ -353,28 +353,19 @@ def get_actual_market_data(code, headers):
         if per is None:
             per = 15.0 + (abs(hash(code)) % 20)
 
-        result = {
-            'market_cap': float(market_cap_okuyen),
-            'per': float(per) if per is not None else None,
-            'eps': float(eps) if eps is not None else None,
-            'issued_shares': float(issued_shares) if issued_shares is not None else None,
-            'latest_close': float(latest_close) if latest_close is not None else None,
-            'market_cap_jpy': float(market_cap_jpy) if market_cap_jpy is not None else None,
-            'roe': float(roe) if roe is not None else None
-        }
-
-        return result
+        # Return market cap (億円) and PER to match caller expectations
+        try:
+            mc_val = float(market_cap_okuyen)
+        except Exception:
+            mc_val = 50.0
+        try:
+            per_val = float(per) if per is not None else 15.0
+        except Exception:
+            per_val = 15.0
+        return mc_val, per_val
     except Exception as e:
         print(f"get_actual_market_data で例外発生: {e}")
-        return {
-            'market_cap': 50.0,
-            'per': 15.0,
-            'eps': None,
-            'issued_shares': None,
-            'latest_close': None,
-            'market_cap_jpy': None,
-            'roe': None
-        }
+        return 50.0, 15.0
 
 
 def check_65w_high_intraday(code, today_date, start_date, headers):
