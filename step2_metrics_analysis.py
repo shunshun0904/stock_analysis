@@ -22,7 +22,15 @@ def calculate_shape_balance_score(scores):
 
     # 極端に低い値のペナルティ
     min_score = min(scores)
-    balance_penalty = 1.0 if min_score >= 0.1 else (min_score / 0.1 if min_score is not None else 0)
+    # 当初は min_score < 0.1 で penalty を直接比例で下げていたが、
+    # 0 が含まれると形状スコアが完全に 0 になり総合スコアが消えてしまう。
+    # 最低ペナルティを 0.1 に設定して、極端に小さい値があっても形状情報を多少残す。
+    if min_score is None:
+        balance_penalty = 0.1
+    elif min_score >= 0.1:
+        balance_penalty = 1.0
+    else:
+        balance_penalty = max(0.1, min_score / 0.1)
 
     return shape_balance * balance_penalty
 
@@ -83,7 +91,7 @@ def get_7_metrics(code, headers=None):
         new_high_count = float(md.get('new_high_count') or md.get('newHighCount') or 0)
         volume_ratio = float(md.get('volume_ratio') or md.get('volumeRatio') or 0)
         roe = md.get('roe')
-        roe = float(roe) if roe is not None else 0.0
+        roe = float(roe) if roe is not None else None
 
         per = md.get('per')
         try:
@@ -199,7 +207,17 @@ def main():
         print("no metrics collected, aborting")
         return False
 
-    df_metrics = pd.DataFrame(all_metrics).T.fillna(0)
+    df_metrics = pd.DataFrame(all_metrics).T
+    # Better imputation strategy:
+    # - If a column is entirely missing (all NaN), fill with neutral 0.5
+    # - Otherwise fill missing values with the column mean
+    for col in df_metrics.columns:
+        col_series = df_metrics[col]
+        if col_series.isna().all():
+            df_metrics[col] = 0.5
+        else:
+            mean_val = col_series.mean(skipna=True)
+            df_metrics[col] = col_series.fillna(mean_val)
     print(f"\n=== Min-Maxスケーリング ===")
 
     df_scores = df_metrics.copy()

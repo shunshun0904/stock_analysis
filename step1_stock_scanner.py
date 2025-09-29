@@ -170,6 +170,7 @@ def get_close_on_date(code: str, date_yyyy_mm_dd: str, headers: dict) -> float:
             # Fetch statements
             resp = request_with_retry('https://api.jquants.com/v1/fins/statements', params={'code': code}, headers=headers)
             if not resp or resp.status_code != 200:
+                print(f"[ROE DEBUG] {code}: fins/statements request failed or non-200: {getattr(resp,'status_code',None)}")
                 return None
             data = resp.json()
             stmts = []
@@ -177,88 +178,127 @@ def get_close_on_date(code: str, date_yyyy_mm_dd: str, headers: dict) -> float:
                 stmts = data.get('statements') or data.get('data') or []
             elif isinstance(data, list):
                 stmts = data
+
             # filter FY rows
             fy = [r for r in stmts if r.get('TypeOfCurrentPeriod') == 'FY']
             if len(fy) < 2:
-                return None
+                # fallback: allow single-FY fallback later, but log first
+                print(f"[ROE DEBUG] {code}: less than 2 FY rows ({len(fy)}) in statements")
+
             # sort by period end / disclosed date
             fy.sort(key=lambda r: (r.get('CurrentPeriodEndDate') or '', r.get('DisclosedDate') or ''))
-            prev = fy[-2]
-            curr = fy[-1]
+            prev = fy[-2] if len(fy) >= 2 else None
+            curr = fy[-1] if len(fy) >= 1 else None
 
-            # extract Equity values
             def _num(v):
                 try:
                     return float(v)
                 except Exception:
                     return None
 
-            equity_prev = _num(prev.get('Equity'))
-            equity_curr = _num(curr.get('Equity'))
+            equity_prev = _num(prev.get('Equity')) if prev else None
+            equity_curr = _num(curr.get('Equity')) if curr else None
 
-            # fetch fs_details for both disclosed dates
-            disclosed_prev = prev.get('DisclosedDate') or prev.get('CurrentPeriodEndDate')
-            disclosed_curr = curr.get('DisclosedDate') or curr.get('CurrentPeriodEndDate')
-            if not disclosed_prev or not disclosed_curr:
-                return None
-
-            fs_prev_resp = request_with_retry('https://api.jquants.com/v1/fins/fs_details', params={'code': code, 'date': disclosed_prev}, headers=headers)
-            fs_curr_resp = request_with_retry('https://api.jquants.com/v1/fins/fs_details', params={'code': code, 'date': disclosed_curr}, headers=headers)
-            if not fs_prev_resp or fs_prev_resp.status_code != 200 or not fs_curr_resp or fs_curr_resp.status_code != 200:
-                return None
-
-            fp = fs_prev_resp.json().get('fs_details') or fs_prev_resp.json()
-            fc = fs_curr_resp.json().get('fs_details') or fs_curr_resp.json()
-            if isinstance(fp, list) and fp:
-                fp = fp[0]
-            if isinstance(fc, list) and fc:
-                fc = fc[0]
-
-            fin_prev = fp.get('FinancialStatement') if isinstance(fp, dict) else fp
-            fin_curr = fc.get('FinancialStatement') if isinstance(fc, dict) else fc
-
-            # Non-controlling interests
-            def _get_nci(fdict):
-                if not fdict or not isinstance(fdict, dict):
-                    return None
-                for key in ('Non-controlling interests (IFRS)', 'Non-controlling interests'):
-                    if key in fdict and fdict.get(key) not in (None, '', 'NaN'):
-                        try:
-                            return float(fdict.get(key))
-                        except Exception:
-                            return None
-                return None
-
-            nci_prev = _get_nci(fin_prev)
-            nci_curr = _get_nci(fin_curr)
-
-            if equity_prev is None or equity_curr is None:
-                return None
-            if nci_prev is None or nci_curr is None:
-                return None
-
-            owners_equity_prev = equity_prev - nci_prev
-            owners_equity_curr = equity_curr - nci_curr
-            avg_owners_equity = (owners_equity_prev + owners_equity_curr) / 2.0
-
-            # profit attributable to owners from current period
+            # fetch fs_details when possible
+            nci_prev = None
+            nci_curr = None
             profit_to_owners = None
-            if isinstance(fin_curr, dict):
-                for key in ('Profit (loss) attributable to owners of parent (IFRS)', 'Profit (loss) attributable to owners of parent'):
-                    if key in fin_curr and fin_curr.get(key) not in (None, '', 'NaN'):
+
+            if curr:
+                disclosed_curr = curr.get('DisclosedDate') or curr.get('CurrentPeriodEndDate')
+            else:
+                disclosed_curr = None
+            if prev:
+                disclosed_prev = prev.get('DisclosedDate') or prev.get('CurrentPeriodEndDate')
+            else:
+                disclosed_prev = None
+
+            if disclosed_curr:
+                fs_curr_resp = request_with_retry('https://api.jquants.com/v1/fins/fs_details', params={'code': code, 'date': disclosed_curr}, headers=headers)
+                if fs_curr_resp and fs_curr_resp.status_code == 200:
+                    fc = fs_curr_resp.json().get('fs_details') or fs_curr_resp.json()
+                    if isinstance(fc, list) and fc:
+                        fc = fc[0]
+                    fin_curr = fc.get('FinancialStatement') if isinstance(fc, dict) else fc
+                    if isinstance(fin_curr, dict):
+                        # profit
+                        for key in ('Profit (loss) attributable to owners of parent (IFRS)', 'Profit (loss) attributable to owners of parent', 'Profit attributable to owners'):
+                            if key in fin_curr and fin_curr.get(key) not in (None, '', 'NaN'):
+                                try:
+                                    profit_to_owners = float(fin_curr.get(key))
+                                    break
+                                except Exception:
+                                    profit_to_owners = None
+                        # nci
+                        for key in ('Non-controlling interests (IFRS)', 'Non-controlling interests', 'Noncontrolling interests'):
+                            if key in fin_curr and fin_curr.get(key) not in (None, '', 'NaN'):
+                                try:
+                                    nci_curr = float(fin_curr.get(key))
+                                    break
+                                except Exception:
+                                    nci_curr = None
+
+            if disclosed_prev:
+                fs_prev_resp = request_with_retry('https://api.jquants.com/v1/fins/fs_details', params={'code': code, 'date': disclosed_prev}, headers=headers)
+                if fs_prev_resp and fs_prev_resp.status_code == 200:
+                    fp = fs_prev_resp.json().get('fs_details') or fs_prev_resp.json()
+                    if isinstance(fp, list) and fp:
+                        fp = fp[0]
+                    fin_prev = fp.get('FinancialStatement') if isinstance(fp, dict) else fp
+                    if isinstance(fin_prev, dict):
+                        for key in ('Non-controlling interests (IFRS)', 'Non-controlling interests', 'Noncontrolling interests'):
+                            if key in fin_prev and fin_prev.get(key) not in (None, '', 'NaN'):
+                                try:
+                                    nci_prev = float(fin_prev.get(key))
+                                    break
+                                except Exception:
+                                    nci_prev = None
+
+            # If we have both equities and both nci/profit, do the canonical calc
+            if equity_prev is not None and equity_curr is not None and nci_prev is not None and nci_curr is not None and profit_to_owners is not None:
+                owners_equity_prev = equity_prev - nci_prev
+                owners_equity_curr = equity_curr - nci_curr
+                avg_owners_equity = (owners_equity_prev + owners_equity_curr) / 2.0
+                if avg_owners_equity == 0:
+                    print(f"[ROE DEBUG] {code}: average owners equity is zero")
+                else:
+                    roe = profit_to_owners / avg_owners_equity
+                    return roe
+
+            # Fallback strategies with logging:
+            # 1) If profit available and current equity available, try profit / (equity_curr - nci_curr_or_0)
+            if profit_to_owners is not None and equity_curr is not None:
+                nci_for_curr = nci_curr if nci_curr is not None else 0.0
+                if nci_curr is None:
+                    print(f"[ROE DEBUG] {code}: NCI for current period missing, assuming 0 for fallback calculation")
+                owners_equity_curr = equity_curr - nci_for_curr
+                if owners_equity_curr != 0:
+                    print(f"[ROE DEBUG] {code}: using fallback profit/current equity -> profit:{profit_to_owners}, owners_equity_curr:{owners_equity_curr}")
+                    return profit_to_owners / owners_equity_curr
+
+            # 2) If we had at least two FY but lacked fs_details, try to extract profit from the statement rows themselves
+            if prev is not None and curr is not None:
+                # try many possible profit fields in curr
+                possible_profit = None
+                for key in ('Profit (loss) attributable to owners of parent (IFRS)', 'Profit (loss) attributable to owners of parent', 'Profit attributable to owners', 'NetIncome', 'ProfitLoss'):
+                    if key in curr and curr.get(key) not in (None, '', 'NaN'):
                         try:
-                            profit_to_owners = float(fin_curr.get(key))
+                            possible_profit = float(curr.get(key))
                             break
                         except Exception:
-                            profit_to_owners = None
-                            break
+                            possible_profit = None
+                if possible_profit is not None and equity_curr is not None:
+                    print(f"[ROE DEBUG] {code}: extracted profit from statement row as fallback")
+                    # assume nci zero if missing
+                    owners_equity_curr = equity_curr - (nci_curr if nci_curr is not None else 0.0)
+                    if owners_equity_curr != 0:
+                        return possible_profit / owners_equity_curr
 
-            if profit_to_owners is None or avg_owners_equity == 0:
-                return None
-
-            roe = profit_to_owners / avg_owners_equity
-            return roe
-        except Exception:
+            # If all fail, log details for debugging and return None
+            print(f"[ROE DEBUG] {code}: could not compute ROE. equity_prev={equity_prev}, equity_curr={equity_curr}, nci_prev={nci_prev}, nci_curr={nci_curr}, profit={profit_to_owners}")
+            return None
+        except Exception as e:
+            print(f"[ROE DEBUG] {code}: exception during compute_roe: {e}")
             return None
 
 

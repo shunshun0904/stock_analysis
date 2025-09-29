@@ -1,0 +1,456 @@
+{
+  "analysis_date": "20250925",
+  "top3_stocks": [
+    {
+      "code": "34770",
+      "name": "フォーライフ",
+      "scores": [
+        0.3333333333333333,
+        0.5,
+        0.5,
+        0.42528955245742145,
+        1.0,
+        0.5,
+        0.5
+      ],
+      "comprehensive_score": 0.60395718746386,
+      "area_score": 0.7705995592689829,
+      "shape_score": 0.783749718254179,
+      "is_holding": false,
+      "is_new_high_today": true,
+      "market_cap": 24.84,
+      "per": 18.0,
+      "qualified": true
+    },
+    {
+      "code": "44950",
+      "name": "アイキューブドシステムズ",
+      "scores": [
+        0.7777777777777778,
+        0.5,
+        0.5,
+        0.48527103113959635,
+        0.1676239458081912,
+        0.5,
+        0.5
+      ],
+      "comprehensive_score": 0.5614442103233299,
+      "area_score": 0.6589151858036889,
+      "shape_score": 0.8520735633654092,
+      "is_holding": false,
+      "is_new_high_today": true,
+      "market_cap": 97.85647,
+      "per": 16.970366280139885,
+      "qualified": true
+    },
+    {
+      "code": "58670",
+      "name": "エスネットワークス",
+      "scores": [
+        0.2962962962962963,
+        0.5,
+        0.5,
+        0.37294622292420043,
+        0.72543784045341,
+        0.5,
+        0.5
+      ],
+      "comprehensive_score": 0.557203508190286,
+      "area_score": 0.6317345482079239,
+      "shape_score": 0.8820215860774685,
+      "is_holding": false,
+      "is_new_high_today": true,
+      "market_cap": 33.163328,
+      "per": 19.0,
+      "qualified": true
+    }
+  ],
+  "holding_stocks": [],
+  "qualified_stocks": [
+    {
+      "code": "34770",
+      "name": "フォーライフ",
+      "scores": [
+        0.3333333333333333,
+        0.5,
+        0.5,
+        0.42528955245742145,
+        1.0,
+        0.5,
+        0.5
+      ],
+      "comprehensive_score": 0.60395718746386,
+      "area_score": 0.7705995592689829,
+      "shape_score": 0.783749718254179,
+      "is_holding": false,
+      "is_new_high_today": true,
+      "market_cap": 24.84,
+      "per": 18.0,
+      "qualified": true
+    },
+    {
+      "code": "44950",
+      "name": "アイキューブドシステムズ",
+      "scores": [
+        0.7777777777777778,
+        0.5,
+        0.5,
+        0.48527103113959635,
+        0.1676239458081912,
+        0.5,
+        0.5
+      ],
+      "comprehensive_score": 0.5614442103233299,
+      "area_score": 0.6589151858036889,
+      "shape_score": 0.8520735633654092,
+      "is_holding": false,
+      "is_new_high_today": true,
+      "market_cap": 97.85647,
+      "per": 16.970366280139885,
+      "qualified": true
+    },
+    {
+      "code": "58670",
+      "name": "エスネットワークス",
+      "scores": [
+        0.2962962962962963,
+        0.5,
+        0.5,
+        0.37294622292420043,
+        0.72543784045341,
+        0.5,
+        0.5
+      ],
+      "comprehensive_score": 0.557203508190286,
+      "area_score": 0.6317345482079239,
+      "shape_score": 0.8820215860774685,
+      "is_holding": false,
+      "is_new_high_today": true,
+      "market_cap": 33.163328,
+      "per": 19.0,
+      "qualified": true
+    },
+    {
+      "code": "43970",
+      "name": "チームスピリット",
+      "scores": [
+        0.7037037037037037,
+        0.5,
+        0.5,
+        0.1740415706979602,
+        0.3132798517646733,
+        0.5,
+        0.5
+      ],
+      "comprehensive_score": 0.5231110312434076,
+      "area_score": 0.5871117125293458,
+      "shape_score": 0.890990624237054,
+      "is_holding": false,
+      "is_new_high_today": true,
+      "market_cap": 65.148336,
+      "per": 24.0,
+      "qualified": true
+    },
+    {
+      "code": "77930",
+      "name": "イメージ・マジック",
+      "scores": [
+        0.07407407407407407,
+        0.5,
+        0.5,
+        0.8235642229619861,
+        0.7742593774910389,
+        0.5,
+        0.5
+      ],
+      "comprehensive_score": 0.4780239809112225,
+      "area_score": 0.785990121092642,
+      "shape_score": 0.6081806476736613,
+      "is_holding": false,
+      "is_new_high_today": true,
+      "market_cap": 31.31258156,
+      "per": 12.763682317488092,
+      "qualified": true
+    },
+    {
+      "code": "92510",
+      "name": "ＡＢ＆Ｃｏｍｐａｎｙ",
+      "scores": [
+        0.2962962962962963,
+        0.5,
+        0.5,
+        0.2825350173668185,
+        0.44403902993257194,
+        0.5,
+        0.5
+      ],
+      "comprehensive_score": 0.45656303853762675,
+      "area_score": 0.502342323061206,
+      "shape_score": 0.9088683504813879,
+      "is_holding": false,
+      "is_new_high_today": true,
+      "market_cap": 50.0,
+      "per": 21.0,
+      "qualified": true
+    },
+    {
+      "code": "55780",
+      "name": "ＡＲアドバンストテクノロジ",
+      "scores": [
+        0.3333333333333333,
+        0.5,
+        0.5,
+        0.20719234606900017,
+        0.44403902993257194,
+        0.5,
+        0.5
+      ],
+      "comprehensive_score": 0.43677685354184187,
+      "area_score": 0.4890162457433372,
+      "shape_score": 0.893174526089439,
+      "is_holding": false,
+      "is_new_high_today": true,
+      "market_cap": 50.0,
+      "per": 23.0,
+      "qualified": true
+    },
+    {
+      "code": "71190",
+      "name": "ハルメクホールディングス",
+      "scores": [
+        0.48148148148148145,
+        0.5,
+        0.5,
+        0.34008157404874634,
+        0.11025550193732586,
+        0.5,
+        0.5
+      ],
+      "comprehensive_score": 0.418630692158668,
+      "area_score": 0.4863562104943696,
+      "shape_score": 0.8607491446097497,
+      "is_holding": false,
+      "is_new_high_today": true,
+      "market_cap": 121.7652399,
+      "per": 19.683499288762444,
+      "qualified": true
+    },
+    {
+      "code": "319A0",
+      "name": "技術承継機構",
+      "scores": [
+        0.2222222222222222,
+        0.5,
+        0.5,
+        0.20719234606900017,
+        0.44403902993257194,
+        0.5,
+        0.5
+      ],
+      "comprehensive_score": 0.3889063156068898,
+      "area_score": 0.4455811633840022,
+      "shape_score": 0.872806903804706,
+      "is_holding": false,
+      "is_new_high_today": true,
+      "market_cap": 50.0,
+      "per": 23.0,
+      "qualified": true
+    },
+    {
+      "code": "228A0",
+      "name": "オプロ",
+      "scores": [
+        0.0,
+        0.5,
+        0.5,
+        0.4279971585606223,
+        0.7429880305535372,
+        0.5,
+        0.5
+      ],
+      "comprehensive_score": 0.0,
+      "area_score": 0.5486460836655245,
+      "shape_score": 0.0,
+      "is_holding": false,
+      "is_new_high_today": true,
+      "market_cap": 32.474113,
+      "per": 17.950985346134413,
+      "qualified": true
+    },
+    {
+      "code": "60450",
+      "name": "レントラックス",
+      "scores": [
+        0.9629629629629629,
+        0.5,
+        0.5,
+        0.0,
+        0.21506207157451718,
+        0.5,
+        0.5
+      ],
+      "comprehensive_score": 0.0,
+      "area_score": 0.6139308256250149,
+      "shape_score": 0.0,
+      "is_holding": false,
+      "is_new_high_today": true,
+      "market_cap": 84.14469,
+      "per": 31.0,
+      "qualified": true
+    }
+  ],
+  "excluded_stocks": [
+    {
+      "code": "55920",
+      "name": "くすりの窓口",
+      "comprehensive_score": 0.0,
+      "reason": "時価総額228億円>200億円"
+    }
+  ],
+  "metrics_data": {
+    "228A0": {
+      "new_high_count": 9,
+      "volume_ratio": 0.0,
+      "roe": 0.0,
+      "per_inv": 0.05276770477815699,
+      "market_cap_inv": 0.029873831160216253,
+      "eps": 0.0,
+      "volatility": 0.0
+    },
+    "319A0": {
+      "new_high_count": 15,
+      "volume_ratio": 0.0,
+      "roe": 0.0,
+      "per_inv": 0.041666666666666664,
+      "market_cap_inv": 0.0196078431372549,
+      "eps": 0.0,
+      "volatility": 0.0
+    },
+    "34770": {
+      "new_high_count": 18,
+      "volume_ratio": 0.0,
+      "roe": 0.0,
+      "per_inv": 0.05263157894736842,
+      "market_cap_inv": 0.03869969040247678,
+      "eps": 0.0,
+      "volatility": 0.0
+    },
+    "43970": {
+      "new_high_count": 28,
+      "volume_ratio": 0.0,
+      "roe": 0.0,
+      "per_inv": 0.04,
+      "market_cap_inv": 0.015117538255232906,
+      "eps": 0.0,
+      "volatility": 0.0
+    },
+    "44950": {
+      "new_high_count": 30,
+      "volume_ratio": 0.0,
+      "roe": 0.0,
+      "per_inv": 0.05564716847787121,
+      "market_cap_inv": 0.010115675787330865,
+      "eps": 0.0,
+      "volatility": 0.0
+    },
+    "55780": {
+      "new_high_count": 18,
+      "volume_ratio": 0.0,
+      "roe": 0.0,
+      "per_inv": 0.041666666666666664,
+      "market_cap_inv": 0.0196078431372549,
+      "eps": 0.0,
+      "volatility": 0.0
+    },
+    "55920": {
+      "new_high_count": 36,
+      "volume_ratio": 0.0,
+      "roe": 0.0,
+      "per_inv": 0.0815253449357519,
+      "market_cap_inv": 0.004359425000561276,
+      "eps": 0.0,
+      "volatility": 0.0
+    },
+    "58670": {
+      "new_high_count": 17,
+      "volume_ratio": 0.0,
+      "roe": 0.0,
+      "per_inv": 0.05,
+      "market_cap_inv": 0.029271152974323814,
+      "eps": 0.0,
+      "volatility": 0.0
+    },
+    "60450": {
+      "new_high_count": 35,
+      "volume_ratio": 0.0,
+      "roe": 0.0,
+      "per_inv": 0.03125,
+      "market_cap_inv": 0.011744713616315945,
+      "eps": 0.0,
+      "volatility": 0.0
+    },
+    "71190": {
+      "new_high_count": 22,
+      "volume_ratio": 0.0,
+      "roe": 0.0,
+      "per_inv": 0.048347718441594176,
+      "market_cap_inv": 0.008145628199110456,
+      "eps": 0.0,
+      "volatility": 0.0
+    },
+    "77930": {
+      "new_high_count": 11,
+      "volume_ratio": 0.0,
+      "roe": 0.0,
+      "per_inv": 0.07265497538615834,
+      "market_cap_inv": 0.03094769751352544,
+      "eps": 0.0,
+      "volatility": 0.0
+    },
+    "92510": {
+      "new_high_count": 17,
+      "volume_ratio": 0.0,
+      "roe": 0.0,
+      "per_inv": 0.045454545454545456,
+      "market_cap_inv": 0.0196078431372549,
+      "eps": 0.0,
+      "volatility": 0.0
+    }
+  },
+  "scaling_info": {
+    "new_high_count": {
+      "min": 9.0,
+      "max": 36.0
+    },
+    "volume_ratio": {
+      "min": 0.0,
+      "max": 0.0
+    },
+    "roe": {
+      "min": 0.0,
+      "max": 0.0
+    },
+    "per_inv": {
+      "min": 0.03125,
+      "max": 0.0815253449357519
+    },
+    "market_cap_inv": {
+      "min": 0.004359425000561276,
+      "max": 0.03869969040247678
+    },
+    "eps": {
+      "min": 0.0,
+      "max": 0.0
+    },
+    "volatility": {
+      "min": 0.0,
+      "max": 0.0
+    }
+  },
+  "token": "eyJraWQiOiJHQXNvU2xxUzMyUktLT2lVYm1xcjU3ekdYNE1TVFhsWFBrbDNJTmhWKzNzPSIsImFsZyI6IlJTMjU2In0.eyJzdWIiOiI3ODA4NGIyNS0wYmY2LTQ2YTktYWE1MC01OWM4MzlmY2VkOGEiLCJlbWFpbF92ZXJpZmllZCI6dHJ1ZSwiaXNzIjoiaHR0cHM6XC9cL2NvZ25pdG8taWRwLmFwLW5vcnRoZWFzdC0xLmFtYXpvbmF3cy5jb21cL2FwLW5vcnRoZWFzdC0xX0FGNjByeXJ2NCIsImNvZ25pdG86dXNlcm5hbWUiOiI3ODA4NGIyNS0wYmY2LTQ2YTktYWE1MC01OWM4MzlmY2VkOGEiLCJvcmlnaW5fanRpIjoiMTYwODFiMmQtMWI5Zi00MWYzLThlZjktMDhiZDIzOGIwNWI3IiwiYXVkIjoiNXZyN2xiOGppdThvZmhvZmJmYWxmbm1waWkiLCJldmVudF9pZCI6IjdiOTc1MjMxLTEzMGUtNDMzNy1hN2Y1LTFkM2U1NTRjYjFhYSIsInRva2VuX3VzZSI6ImlkIiwiYXV0aF90aW1lIjoxNzU5MTMyMDI0LCJleHAiOjE3NTkyMjY5MDksImlhdCI6MTc1OTE0MDUwOSwianRpIjoiZDhlNmI0NWQtZmIwMS00NjdjLWJlNzgtZjQ0MmUxZjMyNzRlIiwiZW1haWwiOiJuYWthbXVyYXNodW45NEBnbWFpbC5jb20ifQ.YXhzX--A-Ey5qlCM00imX_fL5p12kE-JGZ4fkhVchh5nLnBqdpm0TKUxgkzag41t7y7BZsC2XW28FsAsv12WeM8OGjRZCClYtJGhENBafvWybNZ3V0RshCQcPylHO6ef1pWP2heYNoDF4kqk56WUifRBT8xDWmclwYcfYxewHnI_Zhol2CDBm06jON4pfdYXN3yPILhG4p8ag7Rb_nDytJ0MErUDOgscNo-knID9ZwX4ozGBIyOIDGRtZDUFExEGGQA62jiXVRsZoT9ZAcdkxuZdHbPb6HssSCAcEKFtWLqkKSdQEeeNWZG3LKh4_083ap8Ygg3L0VeE2DF1S4tmSg",
+  "summary": {
+    "total_analyzed": 12,
+    "qualified_count": 11,
+    "excluded_count": 1
+  }
+}
