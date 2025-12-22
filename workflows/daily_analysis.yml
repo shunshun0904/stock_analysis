@@ -1,0 +1,44 @@
+#name: Daily Stock Analysis
+
+#on:
+#  schedule:
+#    - cron: '0 8 * * 1-5'   # 平日17:00 JST（UTC 8:00, 月〜金）
+#  workflow_dispatch:
+
+
+# jobs:
+#   analyze-and-send:
+#     runs-on: ubuntu-latest
+#     steps:
+#       - name: Checkout code
+#         uses: actions/checkout@v4
+
+#       - name: Set up Python
+#         uses: actions/setup-python@v4
+#         with:
+#           python-version: '3.10'
+
+#       - name: Install dependencies
+#         run: |
+#           pip install --upgrade pip
+#           pip install -r requirements.txt
+
+#       - name: Install Japanese fonts (for matplotlib)
+#         run: |
+#           sudo apt-get update
+#           sudo apt-get install -y fonts-noto-cjk fonts-ipafont-gothic
+
+#       - name: Step 1 Scanner
+#         env:
+#           JQUANTS_TOKEN: ${{ secrets.JQUANTS_TOKEN }}
+#         run: python step1_stock_scanner.py
+
+#       - name: Step 2 Metrics Analysis
+#         run: python step2_metrics_analysis.py
+
+#       - name: Step 3 Chart Creation & Send Email
+#         env:
+#           GMAIL_TOKEN: ${{ secrets.GMAIL_TOKEN }}
+#           TO_EMAIL:    ${{ secrets.TO_EMAIL }}
+#           OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
+#         run: python step3_chart_creation.py

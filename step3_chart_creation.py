@@ -7,8 +7,20 @@ import requests
 from datetime import datetime, timedelta
 import time
 import json
+import os
+import base64
+from email.mime.multipart import MIMEMultipart
+from email.mime.text import MIMEText
+from email.mime.application import MIMEApplication
+from google.oauth2.credentials import Credentials
+from googleapiclient.discovery import build
+import glob
 
 INPUT_FILE = "step2_results.json"
+
+# Enable Japanese font support for matplotlib
+import matplotlib
+import japanize_matplotlib  # This automatically configures Japanese fonts
 
 # 統一指標配置順序（全レーダーチャートで統一）
 METRICS_ORDER = [
@@ -36,37 +48,89 @@ def load_step2_results():
         print(f"✗ ステップ2結果読み込みエラー: {e}")
         return None
 
+# Note: LLM generation removed per user request. This script will compose a plain-text
+# summary including charts and the numeric metrics used for scoring, and send that via
+# Gmail API (or save to a local file when Gmail credentials are not available).
+
+def create_and_send_email(subject, body_text, to_email, attachment_paths, token_json_str):
+    """Gmail APIでメール送信"""
+    try:
+        creds = Credentials.from_authorized_user_info(json.loads(token_json_str), scopes=['https://www.googleapis.com/auth/gmail.send'])
+        service = build('gmail', 'v1', credentials=creds)
+
+        message = MIMEMultipart()
+        message['to'] = to_email
+        message['subject'] = subject
+        message.attach(MIMEText(body_text, 'plain', 'utf-8'))
+
+        for path in attachment_paths:
+            if os.path.exists(path):
+                with open(path, 'rb') as f:
+                    part = MIMEApplication(f.read(), Name=os.path.basename(path))
+                part['Content-Disposition'] = f'attachment; filename="{os.path.basename(path)}"'
+                message.attach(part)
+            else:
+                print(f"警告: 添付ファイルが見つかりません: {path}")
+
+        raw_message = base64.urlsafe_b64encode(message.as_bytes()).decode()
+        body = {'raw': raw_message}
+
+        sent_message = service.users().messages().send(userId='me', body=body).execute()
+        print(f'✓ メール送信成功！ Message ID: {sent_message["id"]}')
+        return True
+    except Exception as e:
+        print(f"✗ メール送信エラー: {e}")
+        return False
+
 def create_radar_chart(stocks_data, chart_title, filename):
-    """レーダーチャート作成（統一指標順序）"""
-    
-    # 日本語フォント設定（環境に応じて調整）
-    plt.rcParams['font.family'] = 'DejaVu Sans'
-    
+    """レーダーチャート作成（統一指標順序・日本語フォント対応）"""
     # レーダーチャート設定
-    fig, ax = plt.subplots(figsize=(12, 12), subplot_kw=dict(projection='polar'))
-    
+    fig, ax = plt.subplots(figsize=(14, 12), subplot_kw=dict(projection='polar'))
+
     # 角度設定（7角形）
     angles = [i * 2 * np.pi / 7 for i in range(7)]
     angles += angles[:1]  # 閉じるために最初の角度を追加
+
+    # カラーパレット: 非保有銘柄用と保有銘柄用を分ける
+    non_holding_palette = ['#FF6B6B', '#45B7D1', '#96CEB4', '#FFEAA7', '#DDA0DD', '#98D8C7']
+    holding_palette = ['#2F4B8F', '#FF8C00']  # 保有銘柄は目立つ別系統カラー
+    alphas = 0.25
+    linewidth_default = 2.5
+
+    # カウンタを用意して、それぞれのリストで色を割り当てる
+    non_holding_idx = 0
+    holding_idx = 0
+
+    max_stocks = len(stocks_data)
+    for i in range(max_stocks):
+        stock = stocks_data[i]
+        values = stock['scores'] + [stock['scores'][0]]  # 閉じる
+
+        is_holding = stock.get('is_holding', False)
+        if is_holding:
+            color = holding_palette[holding_idx % len(holding_palette)]
+            holding_idx += 1
+            line_style = '--'
+            marker_style = 's'
+            lw = linewidth_default + 0.5
+        else:
+            color = non_holding_palette[non_holding_idx % len(non_holding_palette)]
+            non_holding_idx += 1
+            line_style = '-'
+            marker_style = 'o'
+            lw = linewidth_default
+
+        ax.plot(angles, values, marker=marker_style, linestyle=line_style,
+                linewidth=lw, color=color,
+                label=f"{stock.get('name', stock.get('code'))}{' (保有)' if is_holding else ''}")
+        ax.fill(angles, values, color=color, alpha=alphas)
     
-    colors = ['red', 'blue', 'green']
-    alphas = [0.3, 0.3, 0.3]
-    linewidths = [2.5, 2.0, 2.0]
-    
-    for i, stock in enumerate(stocks_data):
-        if i < len(colors):  # 色数制限対策
-            values = stock['scores'] + [stock['scores'][0]]  # 閉じる
-            
-            ax.plot(angles, values, 'o-', linewidth=linewidths[i], 
-                    color=colors[i], label=stock['name'])
-            ax.fill(angles, values, color=colors[i], alpha=alphas[i])
-    
-    # レーダーチャート装飾
+    # レーダーチャート装飾（japanize_matplotlib が自動でフォント設定）
     ax.set_xticks(angles[:-1])
-    ax.set_xticklabels(METRICS_ORDER, fontsize=11, fontweight='bold')
+    ax.set_xticklabels(METRICS_ORDER, fontsize=12, fontweight='bold')
     ax.set_ylim(0, 1)
-    ax.set_title(chart_title, fontsize=16, fontweight='bold', pad=30)
-    ax.legend(loc='upper right', bbox_to_anchor=(1.4, 1.0), fontsize=12)
+    ax.set_title(chart_title, fontsize=18, fontweight='bold', pad=40)
+    ax.legend(loc='upper right', bbox_to_anchor=(1.3, 1.1), fontsize=11)
     ax.grid(True, alpha=0.3)
     
     # 目盛り設定
@@ -75,8 +139,7 @@ def create_radar_chart(stocks_data, chart_title, filename):
     
     plt.tight_layout()
     plt.savefig(filename, dpi=300, bbox_inches='tight', facecolor='white')
-    plt.show()
-    plt.close()
+    plt.close()  # Remove plt.show() to avoid blocking
     
     print(f"✓ レーダーチャート作成完了: {filename}")
 
@@ -84,7 +147,8 @@ def create_stock_price_chart(code, stock_name, headers):
     """株価チャート作成（過去2年間日足）"""
     
     # 2年間の期間設定
-    end_date = datetime(2025, 9, 26)  # 実運用時は datetime.now()
+    #end_date = datetime(2025, 9, 26)  # 実運用時は datetime.now()
+    end_date = datetime.now()
     start_date = end_date - timedelta(days=730)
     end_date_str = end_date.strftime('%Y%m%d')
     start_date_str = start_date.strftime('%Y%m%d')
@@ -110,8 +174,7 @@ def create_stock_price_chart(code, stock_name, headers):
                 
                 print(f"  データ取得成功: {len(df)}日分")
                 
-                # 日本語フォント設定
-                plt.rcParams['font.family'] = 'DejaVu Sans'
+                # japanize_matplotlib が自動で日本語フォントを設定
                 
                 # 株価チャート作成
                 fig, (ax1, ax2) = plt.subplots(2, 1, figsize=(15, 10), 
@@ -173,7 +236,7 @@ def create_stock_price_chart(code, stock_name, headers):
         return False, None
 
 def main():
-    """ステップ3: レーダーチャート4枚 + 株価チャート3枚作成"""
+    """ステップ3: レーダーチャート4枚 + 株価チャート3枚作成 + LLM考察 + メール送信"""
     
     # ステップ2結果を読み込み
     step2_results = load_step2_results()
@@ -181,20 +244,56 @@ def main():
         return False
     
     headers = {"Authorization": f"Bearer {step2_results.get('token', '')}"}
-    top3_stocks = step2_results['top3_stocks']
-    holding_stocks = step2_results['holding_stocks']
+    # 取引所上の銘柄コード->会社名マッピングを取得（あれば表示に使う）
+    def fetch_company_names(headers):
+        try:
+            url = 'https://api.jquants.com/v1/listed/info'
+            resp = requests.get(url, headers=headers, timeout=15)
+            if resp.status_code == 200:
+                info = resp.json().get('info', [])
+                df = pd.DataFrame(info)
+                if 'Code' in df.columns and 'CompanyName' in df.columns:
+                    mapping = dict(zip(df['Code'].astype(str).str.zfill(4), df['CompanyName']))
+                    return mapping
+        except Exception as e:
+            print(f"警告: 上場会社情報取得失敗: {e}")
+        return {}
+
+    code_to_name = fetch_company_names(headers)
+    top3_stocks = step2_results.get('top3_stocks', [])
+    holding_stocks = step2_results.get('holding_stocks', [])
+
+    # Ensure holdings and top3 have resolved display names (prefer exchange mapping)
+    def resolve_name_for_stock(s):
+        code = str(s.get('code', '')).zfill(4)
+        resolved = code_to_name.get(code)
+        if resolved:
+            s['name'] = resolved
+        else:
+            # keep existing name if present, otherwise fallback to code
+            s['name'] = s.get('name') or code
+        return s
+
+    holding_stocks = [resolve_name_for_stock(s) for s in holding_stocks]
+    top3_stocks = [resolve_name_for_stock(s) for s in top3_stocks]
     
     print(f"\\n=== ステップ3: チャート作成開始 ===")
     
     # ===== レーダーチャート4枚作成 =====
     print(f"\\n【レーダーチャート作成】")
     
+    # 保有銘柄フラグを明示的に設定
+    for stock in holding_stocks:
+        stock['is_holding'] = True
+    for stock in top3_stocks:
+        stock['is_holding'] = False
+
     # チャート1: 1位 + 保有2銘柄
     if len(top3_stocks) > 0:
         chart1_stocks = [top3_stocks[0]] + holding_stocks
         create_radar_chart(
             chart1_stocks,
-            f"Chart 1: {top3_stocks[0]['name']} (1st) + Holdings Comparison",
+            f"保有銘柄 vs {top3_stocks[0]['name']} (1位)",
             "radar_chart_1_top1_vs_holdings.png"
         )
     
@@ -203,7 +302,7 @@ def main():
         chart2_stocks = [top3_stocks[1]] + holding_stocks
         create_radar_chart(
             chart2_stocks,
-            f"Chart 2: {top3_stocks[1]['name']} (2nd) + Holdings Comparison", 
+            f"保有銘柄 vs {top3_stocks[1]['name']} (2位)", 
             "radar_chart_2_top2_vs_holdings.png"
         )
     
@@ -212,7 +311,7 @@ def main():
         chart3_stocks = [top3_stocks[2]] + holding_stocks
         create_radar_chart(
             chart3_stocks,
-            f"Chart 3: {top3_stocks[2]['name']} (3rd) + Holdings Comparison",
+            f"保有銘柄 vs {top3_stocks[2]['name']} (3位)",
             "radar_chart_3_top3_vs_holdings.png"
         )
     
@@ -220,7 +319,7 @@ def main():
     if len(top3_stocks) >= 3:
         create_radar_chart(
             top3_stocks,
-            "Chart 4: Top 3 Stocks Overall Comparison (Shape Balance Considered)",
+            "投資推奨上位3銘柄 比較分析（総合スコア順）",
             "radar_chart_4_top3_comparison.png"
         )
     
@@ -232,8 +331,9 @@ def main():
     chart_data = []
     
     for i, stock in enumerate(top3_stocks[:3]):  # 上位3銘柄のみ
-        code = stock['code']
-        name = stock['name']
+        code = str(stock['code']).zfill(4)
+        # 優先: J-Quants 上場情報の CompanyName -> step2 の name -> コード
+        name = code_to_name.get(code) or stock.get('name') or code
         
         print(f"\\n株価チャート作成 {i+1}/3: {name}({code})")
         
@@ -256,6 +356,75 @@ def main():
     
     print("\\n✓ 株価チャート3枚作成完了")
     
+    # ===== メール本文作成（LLMなし） & メール送信/ローカル保存 =====
+    print(f"\n【メール本文作成・メール送信/保存】")
+
+    token_secret = os.environ.get('GMAIL_TOKEN')
+    to_address = os.environ.get('TO_EMAIL')
+
+    # 件名
+    subject = f"日次新高値ブレイク法分析レポート ({datetime.now().strftime('%Y-%m-%d')})"
+
+    # 本文組み立て: 上位3・保有銘柄・チャート要約・指標の数値
+    lines = []
+    lines.append(subject)
+    lines.append("\n=== 投資推奨上位3銘柄 ===\n")
+    for i, stock in enumerate(top3_stocks[:3]):
+        code = str(stock.get('code','')).zfill(4)
+        display_name = code_to_name.get(code) or stock.get('name') or code
+        lines.append(f"{i+1}. {code} {display_name}")
+        lines.append(f"   総合スコア: {stock.get('comprehensive_score', 0):.4f}")
+        lines.append(f"   面積スコア: {stock.get('area_score', 0):.4f}, 形状スコア: {stock.get('shape_score', 0):.4f}")
+        lines.append(f"   時価総額(億円): {stock.get('market_cap', 'N/A')}, PER: {stock.get('per', 'N/A')}")
+        # raw fields if present
+        if 'issued_shares' in stock or 'latest_close' in stock or 'eps' in stock or 'market_cap_jpy' in stock:
+            extra = []
+            if 'issued_shares' in stock:
+                extra.append(f"発行済株式数:{stock['issued_shares']:,}株")
+            if 'latest_close' in stock:
+                extra.append(f"最新終値:{stock['latest_close']:.0f}円")
+            if 'eps' in stock:
+                extra.append(f"EPS:{stock['eps']}")
+            if 'market_cap_jpy' in stock:
+                extra.append(f"時価総額(JPY):{stock['market_cap_jpy']:,}円")
+            lines.append("   (" + "; ".join(extra) + ")")
+        lines.append("")
+
+    lines.append("\n=== 保有銘柄 ===\n")
+    for h in holding_stocks:
+        code = str(h.get('code','')).zfill(4)
+        display_name = h.get('name') or code_to_name.get(code) or code
+        lines.append(f"- {code} {display_name}  総合スコア:{h.get('comprehensive_score',0):.4f}")
+
+    lines.append("\n=== 株価チャート要約 ===\n")
+    if chart_data:
+        for item in chart_data:
+            lines.append(f"- {item['code']} {item['name']}: 最新終値 {item.get('latest_price','N/A')}, データ点数 {item.get('data_points','N/A')}")
+    else:
+        lines.append("(株価チャートデータはありません)")
+
+    lines.append("\n=== 補足 ===")
+    lines.append("このメールにはレーダーチャートと株価チャートのPNGファイルを添付しています。LLMによる文章生成は行っていません。")
+
+    body_text = "\n".join(lines)
+
+    attachments = glob.glob('*.png')
+
+    if token_secret and to_address:
+        print(f"{len(attachments)}個のファイルを添付して、{to_address}にメールを送信します...")
+        ok = create_and_send_email(subject, body_text, to_address, attachments, token_secret)
+        if not ok:
+            # 保存して手動送付できるようにローカルに保存
+            with open('step3_email_body.txt', 'w', encoding='utf-8') as wf:
+                wf.write(body_text)
+            print("メール送信に失敗したため、本文を step3_email_body.txt に保存しました。PNGはワークスペースにあります。")
+    else:
+        # Gmail設定がない場合はローカル保存
+        with open('step3_email_body.txt', 'w', encoding='utf-8') as wf:
+            wf.write(body_text)
+        print("GMAIL_TOKEN または TO_EMAIL が未設定のため、メール送信を行いませんでした。")
+        print("本文を step3_email_body.txt に保存しました。PNGファイルを手動で添付して送信してください。")
+
     # ===== 作成結果サマリー =====
     print(f"\\n=== ステップ3完了 ===")
     print("生成ファイル:")
@@ -278,7 +447,7 @@ def main():
         print(f"{i+1}. {stock['name']}（{stock['code']})：総合スコア {stock['comprehensive_score']:.4f}{new_high_mark}")
         print(f"   時価総額: {stock.get('market_cap', 0):.0f}億円, PER: {stock.get('per', 0):.1f}倍")
     
-    print(f"\\n🎉 新高値ブレイク法による銘柄選定・チャート作成完了！")
+    print(f"\\n🎉 新高値ブレイク法による銘柄選定・チャート作成・LLM考察・メール送信完了！")
     
     return True
 
@@ -286,6 +455,6 @@ if __name__ == "__main__":
     success = main()
     if success:
         print(f"\\n✓ ステップ3正常完了")
-        print(f"全ての処理が完了しました。生成されたチャートを確認してください。")
+        print(f"全ての処理が完了しました。生成されたチャートとメール送信を確認してください。")
     else:
         print(f"\\n✗ ステップ3でエラーが発生")
