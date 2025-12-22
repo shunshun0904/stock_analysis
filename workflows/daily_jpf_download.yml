@@ -28,7 +28,7 @@ jobs:
 
       - name: Run download script
         run: |
-          python scripts/download_jpf_data.py
+          python download_jpf_data.py
 
       - name: Commit and Push changes
         run: |
