@@ -3,7 +3,7 @@ name: Daily JPF Data Download
 on:
   schedule:
     # 日本時間20:00はUTC 11:00
-    - cron: '40 9 * * 1-5'
+    - cron: '45 9 * * 1-5'
   workflow_dispatch: # 手動実行用
 
 permissions:
