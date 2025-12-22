@@ -1,0 +1,42 @@
+name: Daily JPF Data Download
+
+on:
+  schedule:
+    # 日本時間20:00はUTC 11:00
+    - cron: '24 09 * * *'
+  workflow_dispatch: # 手動実行用
+
+permissions:
+  contents: write
+
+jobs:
+  download-and-commit:
+    runs-on: ubuntu-latest
+    
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.10'
+
+      - name: Install dependencies
+        run: |
+          pip install requests beautifulsoup4
+
+      - name: Run download script
+        run: |
+          python scripts/download_jpf_data.py
+
+      - name: Commit and Push changes
+        run: |
+          git config --local user.email "action@github.com"
+          git config --local user.name "GitHub Action"
+          
+          # margin_dataフォルダ内の変更をステージング
+          git add margin_data/
+          
+          # 変更がある場合のみコミット
+          git diff --quiet && git diff --staged --quiet || (git commit -m "Add JPF margin data [skip ci]" && git push)
