@@ -1,0 +1,878 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>ビッグショット</title>
+<style>
+:root{
+  --ink:#0d1626;
+  --ink-2:#16243c;
+  --asphalt:#070d18;
+  --brass:#c9a227;
+  --brass-dim:#7d661d;
+  --paper:#e8dcc0;
+  --paper-2:#cfc3a6;
+  --paper-ink:#22190e;
+  --park:#2c5347;
+  --rouge:#b4413a;
+  --text:#eee6d6;
+  --muted:#8b96a8;
+  --line:rgba(201,162,39,.30);
+  --display:"Didot","Bodoni 72","Hiragino Mincho ProN","Yu Mincho","Songti SC",serif;
+  --body:"Hiragino Sans","Yu Gothic UI","Yu Gothic","Noto Sans JP",system-ui,sans-serif;
+}
+*{box-sizing:border-box}
+html,body{margin:0;padding:0}
+body{
+  background:var(--ink);
+  background-image:radial-gradient(120% 70% at 50% -12%, var(--ink-2) 0%, var(--ink) 64%);
+  color:var(--text);
+  font-family:var(--body);
+  font-size:15px;
+  line-height:1.5;
+  -webkit-text-size-adjust:100%;
+}
+#app{max-width:540px;margin:0 auto;padding:14px 14px 40px}
+
+/* ---------- header ---------- */
+.top{display:flex;align-items:flex-end;justify-content:space-between;gap:10px;border-bottom:1px solid var(--line);padding-bottom:8px}
+.wordmark{font-family:var(--display);font-size:21px;letter-spacing:.16em;color:var(--brass);line-height:1}
+.wordmark small{display:block;font-family:var(--body);font-size:9px;letter-spacing:.3em;color:var(--muted);margin-top:4px}
+.counter{text-align:right}
+.counter .lab{font-size:9px;letter-spacing:.24em;color:var(--muted)}
+.counter .num{font-family:var(--display);font-size:19px;color:var(--text);line-height:1.1}
+.counter .num small{font-size:11px;color:var(--muted)}
+
+/* ---------- board ---------- */
+.board{margin:12px 0 0;position:relative}
+.board svg{width:100%;height:auto;display:block;background:var(--asphalt);border:1px solid var(--line)}
+.area{cursor:default}
+.area.pick{cursor:pointer}
+
+/* ---------- auction track ---------- */
+.trackwrap{margin-top:12px;border-top:1px solid var(--line);padding-top:10px}
+.tracklab{font-size:9px;letter-spacing:.24em;color:var(--muted);margin-bottom:6px;display:flex;justify-content:space-between}
+.track{display:grid;grid-template-columns:repeat(9,1fr);gap:4px}
+.sp{position:relative;aspect-ratio:1;border:1px solid rgba(201,162,39,.22);display:grid;grid-template-columns:1fr 1fr;gap:1px;padding:2px;background:rgba(0,0,0,.28)}
+.sp i{display:block;border-radius:1px}
+.sp.done{opacity:.2}
+.sp.done::after{content:'';position:absolute;inset:0;background:linear-gradient(to top right,transparent 46%,var(--muted) 46%,var(--muted) 54%,transparent 54%)}
+.sp.now{border-color:var(--brass);box-shadow:0 0 0 1px var(--brass) inset,0 0 12px rgba(201,162,39,.35)}
+
+/* ---------- auction stage ---------- */
+.stage{margin-top:14px;border-top:1px solid var(--line);padding-top:12px;text-align:center}
+.eyebrow{font-size:10px;letter-spacing:.26em;color:var(--muted)}
+.eyebrow b{color:var(--brass);font-weight:600}
+.lots{display:flex;gap:8px;justify-content:center;margin:10px 0 2px}
+.cube{width:30px;height:30px;border-radius:2px;box-shadow:0 3px 8px rgba(0,0,0,.5),0 0 0 1px rgba(0,0,0,.35) inset;position:relative}
+.cube.sm{width:15px;height:15px;border-radius:1px}
+.cube.used{opacity:.16}
+.cube.sel{outline:2px solid var(--brass);outline-offset:2px}
+.cube.pick{cursor:pointer}
+.ask{margin-top:10px;font-family:var(--display);font-size:17px;letter-spacing:.1em;color:var(--brass)}
+.high{font-size:12px;color:var(--muted);margin-top:2px}
+.high b{color:var(--text);font-family:var(--display);font-size:17px}
+.die{display:inline-grid;grid-template-columns:repeat(3,6px);grid-template-rows:repeat(3,6px);gap:2px;vertical-align:-6px;margin-right:6px;padding:4px;border:1px solid var(--brass-dim);border-radius:3px}
+.die u{display:block;width:6px;height:6px;border-radius:50%;background:var(--brass);visibility:hidden}
+.die u.on{visibility:visible}
+
+/* ---------- players ---------- */
+.seats{display:grid;grid-template-columns:repeat(4,1fr);gap:6px;margin-top:14px}
+.seat{border:1px solid var(--line);padding:6px 5px;background:rgba(0,0,0,.2);position:relative;min-height:78px}
+.seat.act{border-color:var(--brass);box-shadow:0 0 0 1px var(--brass) inset}
+.seat.out{opacity:.4}
+.seat .nm{font-size:10px;letter-spacing:.02em;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;display:flex;align-items:center;gap:4px}
+.seat .nm i{width:10px;height:10px;border-radius:1px;flex:0 0 auto;box-shadow:0 0 0 1px rgba(0,0,0,.5)}
+.seat .bidline{font-family:var(--display);font-size:19px;color:var(--brass);line-height:1.15;margin-top:1px;min-height:22px}
+.seat .bidline.zero{color:var(--muted);font-size:10.5px;font-family:var(--body);letter-spacing:.08em;padding-top:5px}
+.seat .kv{font-size:9.5px;color:var(--muted);letter-spacing:.03em;display:flex;justify-content:space-between}
+.seat .kv b{color:var(--text);font-family:var(--display);font-size:12px;font-weight:400}
+.seat .kv.debt b{color:var(--rouge)}
+
+/* ---------- controls ---------- */
+.panel{margin-top:14px;border-top:1px solid var(--line);padding-top:12px}
+.bidrow{display:flex;align-items:center;gap:10px;justify-content:center}
+.bidrow .amt{font-family:var(--display);font-size:34px;color:var(--brass);min-width:66px;text-align:center;line-height:1}
+.step{width:44px;height:44px;font-size:22px;background:transparent;color:var(--text);border:1px solid var(--brass-dim);border-radius:2px;cursor:pointer;font-family:var(--display)}
+.step:disabled{opacity:.28;cursor:default}
+.acts{display:flex;gap:8px;margin-top:12px}
+.btn{
+  flex:1;padding:12px 8px;font-family:var(--body);font-size:13.5px;letter-spacing:.06em;
+  background:transparent;color:var(--text);border:1px solid var(--brass-dim);border-radius:2px;cursor:pointer;
+}
+.btn:hover:not(:disabled){border-color:var(--brass)}
+.btn:disabled{opacity:.3;cursor:default}
+.btn.primary{background:var(--brass);color:#0d1626;border-color:var(--brass);font-weight:600}
+.btn.primary:disabled{background:rgba(201,162,39,.2);color:rgba(13,22,38,.5)}
+.btn.ghost{flex:0 0 auto;padding:12px 12px;font-size:12px;color:var(--muted)}
+.btn:focus-visible,.step:focus-visible{outline:2px solid var(--brass);outline-offset:2px}
+.note{font-size:11px;color:var(--muted);margin-top:8px;text-align:center;letter-spacing:.03em;min-height:17px}
+.note b{color:var(--brass)}
+.note.warn{color:var(--rouge)}
+
+/* ---------- log ---------- */
+.log{margin-top:16px;border-top:1px solid var(--line);padding-top:10px;max-height:150px;overflow-y:auto}
+.log p{margin:0 0 5px;font-size:11.5px;color:var(--muted);letter-spacing:.02em}
+.log p.hi{color:var(--text)}
+.log p.mark{color:var(--brass)}
+.log p:first-child{animation:fade .3s ease}
+@keyframes fade{from{opacity:0}to{opacity:1}}
+
+/* ---------- sheets ---------- */
+.sheet h2{font-family:var(--display);font-size:20px;letter-spacing:.14em;color:var(--brass);margin:0 0 4px}
+.sheet p{font-size:12.5px;color:var(--muted);margin:0 0 14px}
+.rule{font-size:12px;line-height:1.8;color:var(--text)}
+.rule b{color:var(--brass);font-weight:600}
+.rule hr{border:0;border-top:1px solid var(--line);margin:12px 0}
+table{width:100%;border-collapse:collapse;font-size:12px;margin:6px 0 14px}
+th,td{padding:6px 4px;text-align:right;border-bottom:1px solid var(--line)}
+th{font-size:9.5px;letter-spacing:.08em;color:var(--muted);font-weight:400}
+td:first-child,th:first-child{text-align:left}
+tr.win td{color:var(--brass)}
+.verdict{font-family:var(--display);font-size:22px;letter-spacing:.1em;color:var(--brass);margin:2px 0 14px}
+.hero{width:100%;max-width:300px;margin:0 auto;display:block}
+@media (max-width:400px){
+  .seats{gap:4px}
+  .seat{padding:5px 4px}
+  .track{gap:3px}
+}
+@media (prefers-reduced-motion:reduce){*{animation:none!important;transition:none!important}}
+</style>
+</head>
+<body>
+<div id="app"></div>
+
+<script>
+/* ============================================================
+   ビッグショット / Big Shot（アレックス・ランドルフ）
+   ------------------------------------------------------------
+   ENGINE_START ← ここから下、DOM に触れない純粋ロジック
+   ============================================================ */
+
+const NP = 4;                                    // 4人固定
+const CAP = 7;                                   // 1区画に置けるキューブの上限
+const NSPACE = 18;                               // オークションマスの数（4個 × 18 = 72個）
+const START_CASH = 10;                           // 初期資金
+const LOAN_MAX = 9;                              // 借用書は9枚まで（9,8,7…1金）
+const LOAN_COST = 10;                            // 借用書1枚につき決算で −10
+
+// 街区。11区画（9〜21）＋公園2つ＝13エリア。
+// x,y,w,h は SVG の座標（viewBox 0 0 110 94）。park は隣接する公園の番号（×2 の印）。
+const AREAS = [
+  {id: 0, kind:'lot',  v: 9, park:0, x: 2, y: 2, w:25, h:21},
+  {id: 1, kind:'lot',  v:20, park:null, x:29, y: 2, w:25, h:21},
+  {id: 2, kind:'lot',  v:18, park:null, x:56, y: 2, w:25, h:21},
+  {id: 3, kind:'lot',  v:13, park:1, x:83, y: 2, w:25, h:21},
+  {id: 4, kind:'park', v: 0, park:null, x: 2, y:25, w:25, h:21, nm:'西公園'},
+  {id: 5, kind:'lot',  v:11, park:0, x:29, y:25, w:25, h:21},
+  {id: 6, kind:'lot',  v:12, park:1, x:56, y:25, w:25, h:21},
+  {id: 7, kind:'park', v: 0, park:null, x:83, y:25, w:25, h:21, nm:'東公園'},
+  {id: 8, kind:'lot',  v:10, park:0, x: 2, y:48, w:25, h:21},
+  {id: 9, kind:'lot',  v:17, park:null, x:29, y:48, w:25, h:21},
+  {id:10, kind:'lot',  v:16, park:null, x:56, y:48, w:25, h:21},
+  {id:11, kind:'lot',  v:14, park:1, x:83, y:48, w:25, h:21},
+  {id:12, kind:'lot',  v:21, park:null, x:29, y:71, w:52, h:21}
+];
+const NAREA = AREAS.length;
+const PARK_AREA = [4, 7];                        // 公園番号 → エリアID
+const LAND_TOTAL = AREAS.reduce((s,a)=>s+a.v,0); // 161
+
+function sum(a){ let s=0; for(let i=0;i<a.length;i++) s+=a[i]; return s; }
+function shuffle(a,rnd){ const r=rnd||Math.random; for(let i=a.length-1;i>0;i--){ const j=Math.floor(r()*(i+1)); [a[i],a[j]]=[a[j],a[i]]; } return a; }
+
+/* ---- 所有権：最多色が獲る。ただし同数の色はすべて無効 ----
+   3/3/1 なら 1個の色が獲る、という本作の要。               */
+function ownerOf(cubes){
+  const freq = {};
+  for(let i=0;i<NP;i++) if(cubes[i]>0) freq[cubes[i]] = (freq[cubes[i]]||0)+1;
+  let best=null, bestC=0;
+  for(let i=0;i<NP;i++){
+    const c=cubes[i];
+    if(c>0 && freq[c]===1 && c>bestC){ bestC=c; best=i; }
+  }
+  return best;
+}
+
+function createGame(names, personas){
+  // 席順は毎回入れ替える（あなたは常に0番だが、色と手番の巡りが変わる）
+  const seat = [{n:names[0], persona:personas[0], you:true}]
+    .concat(shuffle(names.slice(1).map((n,i)=>({n:n, persona:personas[i+1], you:false}))));
+
+  // 72個のキューブ（各色18個）を18マスへ4個ずつ配る
+  const bag=[];
+  for(let c=0;c<NP;c++) for(let i=0;i<NSPACE;i++) bag.push(c);
+  shuffle(bag);
+  const spaces=[];
+  for(let i=0;i<NSPACE;i++) spaces.push({cubes:bag.slice(i*4,i*4+4), sold:false});
+
+  const G = {
+    players: seat.map((s,i)=>({
+      idx:i, name:s.n, you:s.you, persona:s.persona,
+      cash:START_CASH, loans:0, loanedThisRound:false, bid:0, inplay:true
+    })),
+    areas: AREAS.map(()=>({cubes:[0,0,0,0], sold:false, owner:null})),
+    spaces: spaces,
+    marker: Math.floor(Math.random()*NSPACE),
+    round: 0, active: 0, roll: 0,
+    order: [], ptr: 0, high: 0, highBidder: null,
+    pend: null,                                  // 配置待ち {by, cubes[], done[]}
+    phase: 'roll', log: []
+  };
+  say(G,'街が売りに出された。18回の競りで決着する。','mark');
+  beginRound(G);
+  return G;
+}
+
+function say(G,text,cls){ G.log.unshift({text:text, cls:cls||''}); }
+
+/* ---- ①ダイスを振り、不動産マーカーを進める ---- */
+function beginRound(G){
+  if(G.round >= NSPACE){ finish(G); return G; }
+  G.players.forEach(p=>{ p.loanedThisRound=false; p.bid=0; p.inplay=true; });
+  G.phase='roll';
+  return G;
+}
+function rollDie(G){
+  const roll = 1+Math.floor(Math.random()*6);
+  G.roll = roll;
+  let i=G.marker, moved=0;
+  while(moved<roll){ i=(i+1)%NSPACE; if(!G.spaces[i].sold) moved++; }
+  G.marker=i;
+  G.round++;
+  say(G,'── 第'+G.round+'競り　'+G.players[G.active].name+' が '+roll+' を出し、'+(i+1)+'番のマスへ','mark');
+  startAuction(G);
+  return G;
+}
+
+/* ---- ②競り。手番プレイヤーの左隣から。降りたら以降参加できない ---- */
+function startAuction(G){
+  G.phase='auction';
+  G.high=0; G.highBidder=null;
+  G.order=[]; for(let d=1;d<=NP;d++) G.order.push((G.active+d)%NP);
+  G.ptr=0;
+  G.players.forEach(p=>{ p.bid=0; p.inplay=true; });
+  return G;
+}
+function bidder(G){ return G.players[G.order[G.ptr]]; }
+function inCount(G){ return G.players.filter(p=>p.inplay).length; }
+function nextBidder(G){ do{ G.ptr=(G.ptr+1)%NP; }while(!G.players[G.order[G.ptr]].inplay); }
+
+function canLoan(p){ return !p.loanedThisRound && p.loans<LOAN_MAX; }
+function loanAmount(p){ return LOAN_COST-(p.loans+1); }        // 9,8,7…1
+function takeLoan(G,p){
+  const amt=loanAmount(p);
+  p.cash+=amt; p.loans++; p.loanedThisRound=true;
+  say(G,'　'+p.name+' が借用書を切った（＋'+amt+'／決算 −'+LOAN_COST+'）', p.you?'hi':'');
+  return amt;
+}
+
+function applyBid(G,p,amt){
+  p.bid=amt; G.high=amt; G.highBidder=p.idx;
+  say(G,'　'+p.name+' が '+amt+' へ', p.you?'hi':'');
+  nextBidder(G);
+  return G;
+}
+function applyPass(G,p){
+  p.inplay=false;
+  say(G,'　'+p.name+' は降りた', p.you?'hi':'');
+  if(inCount(G)===1){
+    const w=G.players.find(x=>x.inplay);
+    w.cash-=w.bid;
+    say(G, w.name+' が '+(w.bid?w.bid+' で落札':'無償で獲得'), w.you?'hi':'mark');
+    return beginPlacement(G,w);
+  }
+  nextBidder(G);
+  return G;
+}
+
+/* ---- ③落札者が4個のキューブを好きな区画へ置く ---- */
+function beginPlacement(G,w){
+  G.phase='place';
+  G.pend={by:w.idx, cubes:G.spaces[G.marker].cubes.slice(), done:[false,false,false,false]};
+  return G;
+}
+function openAreas(G){
+  const out=[];
+  for(let a=0;a<NAREA;a++) if(!G.areas[a].sold && sum(G.areas[a].cubes)<CAP) out.push(a);
+  return out;
+}
+function placeCube(G,k,areaId){
+  const A=G.areas[areaId], color=G.pend.cubes[k];
+  A.cubes[color]++;
+  G.pend.done[k]=true;
+  if(sum(A.cubes)===CAP) resolveArea(G,areaId);
+  if(G.pend.done.every(Boolean)) endPlacement(G);
+  return G;
+}
+// 7個目が置かれた瞬間に所有者が決まる。勝者のキューブを1個残して他は取り除く。
+function resolveArea(G,areaId){
+  const A=G.areas[areaId], a=AREAS[areaId], o=ownerOf(A.cubes);
+  A.sold=true; A.owner=o;
+  A.cubes=[0,0,0,0]; if(o!==null) A.cubes[o]=1;
+  say(G, areaName(a)+' の所有者が決まった ── '+(o===null?'該当なし':G.players[o].name), 'mark');
+}
+function endPlacement(G){
+  G.spaces[G.marker].sold=true;
+  G.pend=null;
+  G.active=(G.active+1)%NP;
+  if(G.round>=NSPACE){ finish(G); return G; }
+  return beginRound(G);
+}
+
+/* ---- 決算 ---- */
+function finish(G){
+  for(let a=0;a<NAREA;a++){
+    const A=G.areas[a];
+    if(A.sold) continue;
+    const o=ownerOf(A.cubes);
+    A.sold=true; A.owner=o;
+    A.cubes=[0,0,0,0]; if(o!==null) A.cubes[o]=1;
+  }
+  G.phase='over';
+  say(G,'18回の競りが終わった。未決着の区画も最多色のものになる。','mark');
+  return G;
+}
+function landScore(G,i){
+  const park=[0,1].map(k=> G.areas[PARK_AREA[k]].owner===i);
+  let s=0;
+  for(let a=0;a<NAREA;a++){
+    const d=AREAS[a];
+    if(d.kind!=='lot' || G.areas[a].owner!==i) continue;
+    s += (d.park!==null && park[d.park]) ? d.v*2 : d.v;
+  }
+  return s;
+}
+function totalScore(G,i){
+  const p=G.players[i];
+  return p.cash + landScore(G,i) - LOAN_COST*p.loans;
+}
+function finalTable(G){
+  const rows=G.players.map(p=>({
+    p:p, cash:p.cash, land:landScore(G,p.idx), debt:LOAN_COST*p.loans,
+    loans:p.loans, total:totalScore(G,p.idx)
+  }));
+  const top=Math.max.apply(null, rows.map(r=>r.total));
+  const tied=rows.filter(r=>r.total===top);
+  return {rows:rows, winner:(tied.length===1?tied[0].p:null), top:top};
+}
+function areaName(d){ return d.kind==='park' ? d.nm : d.v+'番地'; }
+
+/* ============================================================
+   ENGINE_END
+   ============================================================ */
+
+/* ============================================================
+   AI_START ── 「金1＝得点1」を軸にした評価と探索
+   ------------------------------------------------------------
+   このゲームは残金がそのまま得点になるので、競りの価値を
+   点数で測ればそのまま上限入札額になる。
+   ============================================================ */
+
+function snapshot(G){ return G.areas.map(A=>({cubes:A.cubes.slice(), sold:A.sold, owner:A.owner})); }
+function cloneSnap(s){ return s.map(A=>({cubes:A.cubes.slice(), sold:A.sold, owner:A.owner})); }
+
+// 未決着の区画で自分が獲る見込み。残りの枠が無作為に埋まるとみなして厳密に数え上げる。
+// 状態は「4色の個数、合計7以下」の330通りしかないので、起動時に一度だけ表にする。
+// （暫定首位に大きな確率を配るような当てずっぽうだと、序盤の1個を過大評価して破産する）
+const PROB_TAB=(function(){
+  const fact=[1,1,2,6,24,120,720,5040], tab=new Float64Array(4096*NP);
+  const c=[0,0,0,0], k=[0,0,0,0];
+  for(c[0]=0;c[0]<=CAP;c[0]++)
+  for(c[1]=0;c[0]+c[1]<=CAP;c[1]++)
+  for(c[2]=0;c[0]+c[1]+c[2]<=CAP;c[2]++)
+  for(c[3]=0;c[0]+c[1]+c[2]+c[3]<=CAP;c[3]++){
+    const r=CAP-(c[0]+c[1]+c[2]+c[3]), denom=Math.pow(NP,r);
+    const base=(((c[0]*8+c[1])*8+c[2])*8+c[3])*NP;
+    for(k[0]=0;k[0]<=r;k[0]++)
+    for(k[1]=0;k[0]+k[1]<=r;k[1]++)
+    for(k[2]=0;k[0]+k[1]+k[2]<=r;k[2]++){
+      k[3]=r-k[0]-k[1]-k[2];
+      const w=fact[r]/(fact[k[0]]*fact[k[1]]*fact[k[2]]*fact[k[3]])/denom;
+      const o=ownerOf([c[0]+k[0],c[1]+k[1],c[2]+k[2],c[3]+k[3]]);
+      if(o!==null) tab[base+o]+=w;
+    }
+  }
+  return tab;
+})();
+function ownProb(A,i){
+  if(A.sold) return A.owner===i?1:0;
+  const C=A.cubes;
+  return PROB_TAB[((((C[0]*8+C[1])*8+C[2])*8+C[3])*NP)+i];
+}
+// 盤面から見た自分の期待得点（現金と借金は外から足す）
+function evalSnap(s,i){
+  const pk=[ownProb(s[PARK_AREA[0]],i), ownProb(s[PARK_AREA[1]],i)];
+  let v=0;
+  for(let a=0;a<NAREA;a++){
+    const d=AREAS[a];
+    if(d.kind!=='lot') continue;
+    const val = d.park!==null ? d.v*(1+pk[d.park]) : d.v;
+    v += val*ownProb(s[a],i);
+  }
+  return v;
+}
+function snapPlace(s,areaId,color){
+  const out=cloneSnap(s), A=out[areaId];
+  A.cubes[color]++;
+  if(sum(A.cubes)===CAP){
+    const o=ownerOf(A.cubes);
+    A.sold=true; A.owner=o; A.cubes=[0,0,0,0]; if(o!==null) A.cubes[o]=1;
+  }
+  return out;
+}
+function snapOpen(s){
+  const out=[];
+  for(let a=0;a<NAREA;a++) if(!s[a].sold && sum(s[a].cubes)<CAP) out.push(a);
+  return out;
+}
+// 4個を貪欲に置く。毎手、残りのキューブ×空き区画を総当りして一番効くところへ。
+function planPlacement(s,i,cubes){
+  let cur=s, plan=[];
+  const remain=cubes.map((c,k)=>({c:c,k:k}));
+  while(remain.length){
+    const open=snapOpen(cur);
+    if(!open.length) break;
+    let best=null;
+    for(let r=0;r<remain.length;r++){
+      for(let j=0;j<open.length;j++){
+        const nx=snapPlace(cur,open[j],remain[r].c);
+        const v=evalSnap(nx,i);
+        if(!best || v>best.v) best={v:v, r:r, a:open[j], nx:nx};
+      }
+    }
+    if(!best) break;
+    plan.push({k:remain[best.r].k, area:best.a});
+    remain.splice(best.r,1);
+    cur=best.nx;
+  }
+  return {plan:plan, snap:cur};
+}
+
+// 落札を少しだけ渋る係数。競り負けても相手は金を払っており、その出費は
+// そのまま相手の失点になる。だから「置けた場合との差額」を丸ごと出すのは払いすぎ。
+// 0.5〜1.5 を総当りで戦わせると 0.7〜1.0 はほぼ横ばい（勝率 .24〜.29）で、
+// 0.6以下と1.1以上ではっきり落ちる。その平らな帯の内側を採っている。
+const THRIFT=0.88;
+
+// 落札する値打ち＝「自分で置けた場合」と「誰かに置かれた場合」の差
+function auctionValue(G,i,cubes){
+  const s=snapshot(G);
+  const base=evalSnap(s,i);
+  const mine=planPlacement(s,i,cubes);
+  const gain=evalSnap(mine.snap,i)-base;
+  let harm=0;
+  for(let o=0;o<NP;o++){
+    if(o===i) continue;
+    const theirs=planPlacement(s,o,cubes);
+    harm += base-evalSnap(theirs.snap,i);
+  }
+  return (gain + harm/(NP-1))*THRIFT;
+}
+
+function cpuBid(G){
+  const p=bidder(G), cubes=G.spaces[G.marker].cubes;
+  const raw=auctionValue(G,p.idx,cubes);
+  const target=Math.floor(raw*p.persona.rate*(0.86+Math.random()*0.30));
+  const need=G.high+1;
+  if(target<need) return {pass:true};
+  if(need>p.cash){
+    // 借りてでも競る価値があるか。借用書n枚目の実質負担は n 点。
+    if(canLoan(p) && need<=p.cash+loanAmount(p) && target-(p.loans+1)>=need) return {loan:true};
+    return {pass:true};
+  }
+  let amt=need;
+  if(Math.random()<0.22) amt=Math.min(target, need+Math.max(1,Math.round(target*0.18)));  // ときおり跳ね上げる
+  return {amt:Math.min(amt, p.cash)};
+}
+function cpuPlacement(G){
+  const p=G.players[G.pend.by];
+  const cubes=G.pend.cubes.filter((c,k)=>!G.pend.done[k]);
+  const keys=[]; G.pend.done.forEach((d,k)=>{ if(!d) keys.push(k); });
+  const r=planPlacement(snapshot(G),p.idx,cubes);
+  if(!r.plan.length) return null;
+  return {k:keys[r.plan[0].k], area:r.plan[0].area};
+}
+
+/* ============================================================
+   AI_END
+   ============================================================ */
+
+/* ============================================================
+   描画
+   ============================================================ */
+
+const COLORS=['#cf4b39','#3b7fc4','#d5a12a','#8a6ec0'];
+const CNAMES=['朱','蒼','金','菫'];
+const NAMES=['あなた','デラフィールド夫人','オライリー','ヴァンス氏'];
+const PERSONAS=[{rate:1.0},{rate:0.94},{rate:1.06},{rate:1.0}];
+
+let G=null, screen='title', busy=false, myBid=0, selCube=-1, showAll=false;
+const app=document.getElementById('app');
+const esc=s=>String(s).replace(/[&<>]/g,m=>({'&':'&amp;','<':'&lt;','>':'&gt;'}[m]));
+
+function newGame(){
+  G=createGame(NAMES,PERSONAS); screen='play'; busy=false; selCube=-1;
+  render(); step();
+}
+
+/* ---- 街区の SVG ---- */
+function slots(d){
+  const s=4.2, g=1.1;
+  const w1=4*s+3*g, w2=3*s+2*g;
+  const y1=d.y+d.h-10.6, y2=y1+s+g;
+  const x1=d.x+(d.w-w1)/2, x2=d.x+(d.w-w2)/2;
+  const out=[];
+  for(let i=0;i<4;i++) out.push([x1+i*(s+g), y1]);
+  for(let i=0;i<3;i++) out.push([x2+i*(s+g), y2]);
+  return {pos:out, s:s};
+}
+function treeSVG(cx,cy,r){
+  return '<circle cx="'+cx+'" cy="'+cy+'" r="'+r+'" fill="#4b7d63" opacity=".85"/>'
+       + '<circle cx="'+(cx-r*0.4)+'" cy="'+(cy-r*0.35)+'" r="'+(r*0.62)+'" fill="#5d926f" opacity=".8"/>';
+}
+function boardSVG(pickable){
+  const open = pickable ? openAreas(G) : [];
+  let h='<svg viewBox="0 0 110 94" role="img" aria-label="街区図">';
+  // 街路のにじみ
+  h+='<rect x="0" y="0" width="110" height="94" fill="#070d18"/>';
+  h+='<g stroke="#16243c" stroke-width=".5" opacity=".9">';
+  for(let x=15.5;x<110;x+=27) h+='<path d="M'+x+' 0 V94"/>';
+  for(let y=12.5;y<94;y+=23) h+='<path d="M0 '+y+' H110"/>';
+  h+='</g>';
+
+  AREAS.forEach(d=>{
+    const A=G.areas[d.id];
+    const park=d.kind==='park';
+    const can=open.indexOf(d.id)>=0;
+    const prov=A.sold?A.owner:ownerOf(A.cubes);
+    const oc=prov===null?null:COLORS[prov];
+
+    h+='<g class="area'+(can?' pick':'')+'" data-area="'+d.id+'">';
+    // 地面
+    h+='<rect class="lotbg" x="'+d.x+'" y="'+d.y+'" width="'+d.w+'" height="'+d.h+'" rx=".8" fill="'
+      +(park?'#2c5347':'#e8dcc0')+'" opacity="'+(A.sold?.35:1)+'"/>';
+    if(oc) h+='<rect x="'+d.x+'" y="'+d.y+'" width="'+d.w+'" height="'+d.h+'" rx=".8" fill="'+oc+'" opacity="'+(A.sold?.5:.16)+'"/>';
+    h+='<rect x="'+d.x+'" y="'+d.y+'" width="'+d.w+'" height="'+d.h+'" rx=".8" fill="none" stroke="'
+      +(can?'#c9a227':(oc||'#0d1626'))+'" stroke-width="'+(can?.9:.5)+'"/>';
+
+    if(park){
+      h+=treeSVG(d.x+d.w*0.24, d.y+4.6, 2.9)+treeSVG(d.x+d.w*0.50, d.y+3.7, 2.2)+treeSVG(d.x+d.w*0.76, d.y+5.0, 2.5);
+      h+='<text x="'+(d.x+d.w/2)+'" y="'+(d.y+9.6)+'" text-anchor="middle" font-size="3.7" fill="#e6f0e4" letter-spacing=".4">'+d.nm+'</text>';
+    }else{
+      h+='<text x="'+(d.x+d.w/2)+'" y="'+(d.y+7.4)+'" text-anchor="middle" font-size="7.4" font-family="Didot,Bodoni 72,serif" fill="'
+        +(A.sold?'#e8dcc0':'#22190e')+'">'+d.v+'</text>';
+      if(d.park!==null){
+        const mine=G.areas[PARK_AREA[d.park]];
+        const lit=mine.sold&&mine.owner!==null;
+        h+='<text x="'+(d.x+d.w-2.2)+'" y="'+(d.y+4.4)+'" text-anchor="end" font-size="3.2" fill="'
+          +(lit?COLORS[mine.owner]:'#8a7a52')+'">×2</text>';
+      }
+    }
+
+    // キューブ
+    const sl=slots(d);
+    if(A.sold){
+      // 決着済み。地色が所有者の色になるので「売却済」の文字は要らない
+      if(A.owner!==null){
+        h+='<rect x="'+(d.x+d.w/2-3.1)+'" y="'+(d.y+d.h-8.2)+'" width="6.2" height="6.2" rx=".7" fill="'+COLORS[A.owner]+'" stroke="#0d1626" stroke-width=".5"/>';
+      }else{
+        h+='<text x="'+(d.x+d.w/2)+'" y="'+(d.y+d.h-4.2)+'" text-anchor="middle" font-size="3.4" fill="#9aa6b6">所有者なし</text>';
+      }
+    }else{
+      let n=0;
+      for(let c=0;c<NP;c++) for(let q=0;q<A.cubes[c];q++){
+        const pt=sl.pos[n++];
+        h+='<rect x="'+pt[0]+'" y="'+pt[1]+'" width="'+sl.s+'" height="'+sl.s+'" rx=".5" fill="'+COLORS[c]+'" stroke="rgba(0,0,0,.45)" stroke-width=".3"/>';
+      }
+      for(;n<CAP;n++){
+        const pt=sl.pos[n];
+        h+='<rect x="'+pt[0]+'" y="'+pt[1]+'" width="'+sl.s+'" height="'+sl.s+'" rx=".5" fill="none" stroke="'
+          +(park?'rgba(255,255,255,.22)':'rgba(0,0,0,.20)')+'" stroke-width=".3"/>';
+      }
+    }
+    h+='</g>';
+  });
+  h+='</svg>';
+  return '<div class="board">'+h+'</div>';
+}
+
+function trackHTML(){
+  let h='<div class="trackwrap"><div class="tracklab"><span>オークションマス</span><span>残り '+(NSPACE-G.round)+' / '+NSPACE+'</span></div><div class="track">';
+  G.spaces.forEach((sp,i)=>{
+    h+='<div class="sp'+(sp.sold?' done':'')+(i===G.marker&&G.phase!=='over'?' now':'')+'" title="'+(i+1)+'番">';
+    sp.cubes.forEach(c=>{ h+='<i style="background:'+COLORS[c]+'"></i>'; });
+    h+='</div>';
+  });
+  return h+'</div></div>';
+}
+
+function dieHTML(n){
+  const P={1:[4],2:[0,8],3:[0,4,8],4:[0,2,6,8],5:[0,2,4,6,8],6:[0,2,3,5,6,8]}[n]||[];
+  let h='<span class="die">';
+  for(let i=0;i<9;i++) h+='<u class="'+(P.indexOf(i)>=0?'on':'')+'"></u>';
+  return h+'</span>';
+}
+
+function seatsHTML(){
+  let h='<div class="seats">';
+  G.players.forEach(p=>{
+    const act=(G.phase==='auction' && bidder(G)===p) || (G.phase==='place' && G.pend.by===p.idx) || (G.phase==='roll' && G.active===p.idx);
+    h+='<div class="seat'+(act?' act':'')+(G.phase==='auction'&&!p.inplay?' out':'')+'">'
+      +'<div class="nm"><i style="background:'+COLORS[p.idx]+'"></i>'+esc(p.name)+(G.active===p.idx?' ◆':'')+'</div>'
+      +'<div class="bidline'+(p.bid?'':' zero')+'">'+(p.bid?p.bid:(G.phase==='auction'?(p.inplay?'—':'降りた'):'—'))+'</div>'
+      +'<div class="kv"><span>残金</span><b>'+p.cash+'</b></div>'
+      +'<div class="kv debt"><span>借用書</span><b>'+(p.loans||'—')+'</b></div>'
+      +(showAll?'<div class="kv"><span>土地</span><b>'+landScore(G,p.idx)+'</b></div>'
+                +'<div class="kv"><span>暫定</span><b>'+totalScore(G,p.idx)+'</b></div>':'')
+      +'</div>';
+  });
+  return h+'</div>';
+}
+
+function lotsHTML(){
+  const cubes = G.phase==='place' ? G.pend.cubes : G.spaces[G.marker].cubes;
+  const done  = G.phase==='place' ? G.pend.done : [false,false,false,false];
+  const mine  = G.phase==='place' && G.pend.by===0 && !busy;
+  // 何も選んでいなければ、次に置かれる1個を光らせておく
+  const focus = mine ? (selCube>=0 && !done[selCube] ? selCube : done.indexOf(false)) : -1;
+  let h='<div class="lots">';
+  cubes.forEach((c,k)=>{
+    h+='<div class="cube'+(done[k]?' used':'')+(mine&&!done[k]?' pick':'')+(k===focus?' sel':'')
+      +'" data-cube="'+k+'" style="background:'+COLORS[c]+'"></div>';
+  });
+  return h+'</div>';
+}
+
+function render(){
+  if(screen==='rules') return;
+  if(screen==='title'){ renderTitle(); return; }
+  if(G.phase==='over'){ renderEnd(); return; }
+
+  const me=G.players[0];
+  let h='<div class="top"><div class="wordmark">BIG SHOT<small>アレックス・ランドルフ</small></div>'
+   +'<div class="counter"><div class="lab">競り</div><div class="num">'+Math.max(1,G.round)+'<small> / '+NSPACE+'</small></div></div></div>';
+
+  h+=boardSVG(G.phase==='place' && G.pend.by===0 && !busy);
+  h+=trackHTML();
+
+  h+='<div class="stage">';
+  if(G.phase==='roll'){
+    h+='<div class="eyebrow">'+esc(G.players[G.active].name)+' の手番 ── <b>ダイスでマスを決める</b></div>';
+    h+='<div class="ask" style="margin-top:16px">'+(G.active===0?'ダイスを振る':'相手が振っている…')+'</div>';
+    h+='<div class="high">マーカーは <b>'+(G.marker+1)+'</b> 番</div>';
+  }else{
+    h+='<div class="eyebrow">'+(G.marker+1)+'番のマス ── <b>'+(G.phase==='place'?'落札者が4個を配置する':'降りたら以降は参加できない')+'</b></div>';
+    h+=lotsHTML();
+    if(G.phase==='auction'){
+      const b=bidder(G);
+      h+='<div class="ask">'+(b.you?'あなたの番':esc(b.name)+' が考えている…')+'</div>';
+      h+='<div class="high">'+dieHTML(G.roll)+'最高額 <b>'+G.high+'</b>'+(G.highBidder!==null?'　'+esc(G.players[G.highBidder].name):'　（まだ誰も）')+'</div>';
+    }else{
+      const w=G.players[G.pend.by];
+      h+='<div class="ask">'+(w.you?'置く区画を選ぶ':esc(w.name)+' が配置している…')+'</div>';
+      h+='<div class="high">残り <b>'+G.pend.done.filter(d=>!d).length+'</b> 個</div>';
+    }
+  }
+  h+='</div>';
+
+  h+=seatsHTML();
+  h+='<div class="panel">';
+
+  if(G.phase==='roll' && G.active===0 && !busy){
+    h+='<div class="acts"><button class="btn primary" id="roll">ダイスを振る</button></div>';
+    h+='<div class="note">出た目の数だけ、未売却のマスを進む。</div>';
+  }else if(G.phase==='auction' && bidder(G).you && !busy){
+    const need=G.high+1, max=me.cash;
+    if(myBid<need) myBid=need;
+    if(myBid>max) myBid=max;
+    const ok=max>=need;
+    h+='<div class="bidrow">'
+      +'<button class="step" id="dn"'+(ok&&myBid>need?'':' disabled')+'>−</button>'
+      +'<div class="amt">'+(ok?myBid:'—')+'</div>'
+      +'<button class="step" id="up"'+(ok&&myBid<max?'':' disabled')+'>＋</button></div>';
+    h+='<div class="acts">'
+      +'<button class="btn primary" id="bid"'+(ok?'':' disabled')+'>入札</button>'
+      +'<button class="btn" id="pass">降りる</button></div>';
+    h+='<div class="acts" style="margin-top:8px">'
+      +'<button class="btn ghost" id="loan" style="flex:1"'+(canLoan(me)?'':' disabled')+'>借用書を切る（＋'+(canLoan(me)?loanAmount(me):'—')+'／決算 −10）</button></div>';
+    h+='<div class="note'+(ok?'':' warn')+'">'
+      +(ok?'残金 <b>'+me.cash+'</b>　最低入札 <b>'+need+'</b>'
+          :'残金が足りない。借用書を切るか、降りるしかない。')+'</div>';
+  }else if(G.phase==='place' && G.pend.by===0 && !busy){
+    h+='<div class="note">上のキューブを選び、街区図の区画をタップして置く。<br>7個目が置かれた区画はその場で所有者が決まる。</div>';
+    h+='<div class="acts"><button class="btn" id="auto">おまかせで1個置く</button></div>';
+  }else{
+    h+='<div class="note">…</div>';
+  }
+
+  h+='<div class="acts" style="margin-top:8px">'
+    +'<button class="btn ghost" id="peek" style="flex:1">'+(showAll?'内訳を隠す':'暫定得点を表示')+'</button>'
+    +'<button class="btn ghost" id="rules" style="flex:1">ルール</button></div>';
+  h+='</div>';
+
+  h+='<div class="log">'+G.log.slice(0,40).map(l=>'<p class="'+l.cls+'">'+esc(l.text)+'</p>').join('')+'</div>';
+
+  app.innerHTML=h;
+  wire();
+}
+
+function wire(){
+  const $=id=>app.querySelector('#'+id);
+  const me=G.players[0];
+  if($('roll')) $('roll').onclick=()=>{ busy=true; render(); setTimeout(()=>{ rollDie(G); busy=false; render(); step(); },320); };
+  if($('up'))   $('up').onclick=()=>{ myBid++; render(); };
+  if($('dn'))   $('dn').onclick=()=>{ myBid--; render(); };
+  if($('bid'))  $('bid').onclick=()=>{ applyBid(G,me,myBid); myBid=0; render(); step(); };
+  if($('pass')) $('pass').onclick=()=>{ myBid=0; applyPass(G,me); selCube=-1; render(); step(); };
+  if($('loan')) $('loan').onclick=()=>{ takeLoan(G,me); render(); };
+  if($('auto')) $('auto').onclick=()=>{ const m=cpuPlacement(G); if(m){ placeCube(G,m.k,m.area); selCube=-1; render(); step(); } };
+  if($('peek')) $('peek').onclick=()=>{ showAll=!showAll; render(); };
+  if($('rules'))$('rules').onclick=()=>{ screen='rules'; renderRules(); };
+
+  app.querySelectorAll('.cube[data-cube]').forEach(el=>el.onclick=()=>{
+    const k=+el.dataset.cube;
+    if(G.phase!=='place'||G.pend.by!==0||G.pend.done[k]) return;
+    selCube=k; render();
+  });
+  app.querySelectorAll('.area.pick').forEach(el=>el.onclick=()=>{
+    if(G.phase!=='place'||G.pend.by!==0||busy) return;
+    let k=selCube;
+    if(k<0 || G.pend.done[k]) k=G.pend.done.indexOf(false);
+    if(k<0) return;
+    selCube=-1;
+    placeCube(G,k,+el.dataset.area);
+    render(); step();
+  });
+}
+
+/* ---- CPUの手を順に進める ---- */
+function step(){
+  if(!G || screen!=='play') return;
+  if(G.phase==='over'){ setTimeout(render,600); return; }
+
+  if(G.phase==='roll'){
+    if(G.active===0){ busy=false; render(); return; }
+    busy=true; render();
+    setTimeout(()=>{ rollDie(G); busy=false; render(); step(); }, 620);
+    return;
+  }
+  if(G.phase==='auction'){
+    const p=bidder(G);
+    if(p.you){ busy=false; myBid=0; render(); return; }
+    busy=true; render();
+    setTimeout(()=>{
+      let mv=cpuBid(G);
+      if(mv.loan){ takeLoan(G,p); mv=cpuBid(G); }
+      if(mv.pass||!mv.amt) applyPass(G,p); else applyBid(G,p,mv.amt);
+      busy=false; render(); step();
+    }, 620+Math.random()*420);
+    return;
+  }
+  if(G.phase==='place'){
+    if(G.pend.by===0){ busy=false; render(); return; }
+    busy=true; render();
+    setTimeout(()=>{
+      const m=cpuPlacement(G);
+      if(m) placeCube(G,m.k,m.area); else endPlacement(G);
+      busy=false; render(); step();
+    }, 430);
+    return;
+  }
+}
+
+/* ---- 画面 ---- */
+function heroSVG(){
+  const g='#c9a227';
+  let rays='';
+  for(let a=-78;a<=78;a+=13){
+    const r=a*Math.PI/180;
+    rays+='M150 190 L'+(150+Math.sin(r)*150).toFixed(1)+' '+(190-Math.cos(r)*150).toFixed(1)+' ';
+  }
+  const T=(x,w,hgt,step)=>{                       // 段になった塔
+    let s='', y=190, ww=w;
+    for(let i=0;i<step;i++){
+      const hh=hgt/step;
+      s+='<rect x="'+(x+(w-ww)/2).toFixed(1)+'" y="'+(y-hh).toFixed(1)+'" width="'+ww.toFixed(1)+'" height="'+hh.toFixed(1)+'" fill="#0d1626" stroke="'+g+'" stroke-width="1.1"/>';
+      y-=hh; ww*=.76;
+    }
+    s+='<path d="M'+(x+w/2)+' '+y+' L'+(x+w/2)+' '+(y-14)+'" stroke="'+g+'" stroke-width="1.4"/>';
+    s+='<circle cx="'+(x+w/2)+'" cy="'+(y-17)+'" r="2.6" fill="'+g+'"/>';
+    return s;
+  };
+  return '<svg class="hero" viewBox="0 0 300 210" aria-hidden="true">'
+    +'<path d="'+rays+'" stroke="'+g+'" stroke-width=".8" opacity=".22" fill="none"/>'
+    +'<circle cx="150" cy="106" r="62" fill="#16243c" opacity=".7"/>'
+    +'<circle cx="150" cy="106" r="62" fill="none" stroke="'+g+'" stroke-width="1.4" opacity=".85"/>'
+    +T(66,34,84,3)+T(108,40,118,4)+T(156,44,142,5)+T(208,32,96,3)
+    +'<path d="M40 190 H262" stroke="'+g+'" stroke-width="1.6"/>'
+    +'<path d="M52 197 H250" stroke="'+g+'" stroke-width=".7" opacity=".5"/>'
+    +'<g fill="'+g+'" opacity=".55">'
+      +'<rect x="120" y="200" width="8" height="8" rx="1"/>'
+      +'<rect x="136" y="200" width="8" height="8" rx="1"/>'
+      +'<rect x="152" y="200" width="8" height="8" rx="1"/>'
+      +'<rect x="168" y="200" width="8" height="8" rx="1"/>'
+    +'</g></svg>';
+}
+
+function renderTitle(){
+  let h='<div class="top"><div class="wordmark">BIG SHOT<small>アレックス・ランドルフ</small></div></div>'
+   +'<div class="stage" style="border:0;padding-top:14px">'+heroSVG()
+   +'<div class="ask" style="margin-top:12px">借りた金で、街を買う</div>'
+   +'<div class="high">4人対戦（あなた＋3名）　全18回の競り</div></div>'
+   +'<div class="acts" style="margin-top:22px"><button class="btn primary" id="start">はじめる</button>'
+   +'<button class="btn" id="rules2">ルール</button></div>'
+   +'<div class="note" style="margin-top:14px">競り落としたキューブは<b>相手の色も含めて</b>あなたが置く。<br>区画は7個で締め切り、<b>同数の色はすべて無効</b>になる。</div>';
+  app.innerHTML=h;
+  app.querySelector('#start').onclick=newGame;
+  app.querySelector('#rules2').onclick=()=>{ screen='rules'; renderRules(); };
+}
+
+function renderRules(){
+  app.innerHTML='<div class="sheet">'
+   +'<h2>ルール</h2><p>アレックス・ランドルフ「ビッグショット」（4人戦）</p><div class="rule">'
+   +'<b>目的</b>　決算で <b>残金 ＋ 土地の価値 − 借用書×10</b> が最も多い人の勝ち。'
+   +'このゲームに収入はない。金を使うことは、そのまま得点を減らすこと。<hr>'
+   +'<b>街区</b>　11区画（9〜21）と公園2つ、あわせて13エリア。各エリアには<b>7個まで</b>キューブを置ける。<hr>'
+   +'<b>準備</b>　72個のキューブ（4色×18個）を18のオークションマスへ4個ずつ配る。全員 残金 '+START_CASH+'。<hr>'
+   +'<b>①ダイス</b>　手番の人がダイスを振り、出た目だけ不動産マーカーを進める。売却済みのマスは数えない。<hr>'
+   +'<b>②競り</b>　止まったマスの4個を競る。手番の<b>左隣</b>から順に、上乗せするか降りるか。'
+   +'<b>降りたら以降は参加できない</b>。最後に残った1人が落札し、その額だけ支払う。<hr>'
+   +'<b>③配置</b>　落札者は4個すべてを好きな区画へ置く。<b>相手の色のキューブも自分で置く</b>のがこのゲームの肝。<hr>'
+   +'<b>所有権</b>　区画に7個目が置かれた瞬間に決着。最も多い色がその区画を得る。'
+   +'ただし<b>同数の色はすべて無効</b>。3/3/1 なら 1個の色が持っていく。<hr>'
+   +'<b>公園と ×2</b>　公園に隣接する3区画には ×2 の印がある。'
+   +'その公園を持っている人は、自分が持つ ×2 区画の価値が<b>2倍</b>になる。<hr>'
+   +'<b>借用書</b>　1回の競りにつき1枚まで。1枚目は ＋9、2枚目は ＋8、3枚目は ＋7…と減っていく。'
+   +'どの1枚も決算では <b>−10</b>。つまり n 枚目の実質負担は n 点。<hr>'
+   +'<b>終了</b>　18回の競りで終わり。決着していない区画も最多色のものになる（同数は無効）。'
+   +'</div><div class="acts" style="margin-top:20px"><button class="btn primary" id="back">戻る</button></div></div>';
+  app.querySelector('#back').onclick=()=>{ screen=(G?'play':'title'); render(); };
+}
+
+function renderEnd(){
+  const t=finalTable(G);
+  let h='<div class="top"><div class="wordmark">CLOSING<small>決算</small></div></div>';
+  h+=boardSVG(false);
+  h+='<div class="sheet" style="padding:14px 0">';
+  h+='<div class="verdict">'+(t.winner?esc(t.winner.name)+' の勝ち':'引き分け')+'</div>';
+  h+='<table><tr><th>　</th><th>残金</th><th>土地</th><th>借用書</th><th>合計</th></tr>';
+  t.rows.slice().sort((a,b)=>b.total-a.total).forEach(r=>{
+    h+='<tr class="'+(t.winner===r.p?'win':'')+'"><td><span class="cube sm" style="display:inline-block;vertical-align:-2px;margin-right:5px;background:'
+      +COLORS[r.p.idx]+'"></span>'+esc(r.p.name)+'</td>'
+      +'<td>'+r.cash+'</td><td>'+r.land+'</td><td>'+(r.loans?r.loans+'枚 −'+r.debt:'—')+'</td>'
+      +'<td><b>'+r.total+'</b></td></tr>';
+  });
+  h+='</table>';
+  h+='<div class="note">土地の合計は '+LAND_TOTAL+' 点。公園を取れば ×2 印の区画は倍になる。</div>';
+  h+='<div class="acts"><button class="btn primary" id="again">もう一度</button><button class="btn" id="rules3">ルール</button></div>';
+  h+='<div class="log" style="max-height:200px">'+G.log.slice(0,60).map(l=>'<p class="'+l.cls+'">'+esc(l.text)+'</p>').join('')+'</div></div>';
+  app.innerHTML=h;
+  app.querySelector('#again').onclick=newGame;
+  app.querySelector('#rules3').onclick=()=>{ screen='rules'; renderRules(); };
+}
+
+renderTitle();
+</script>
+</body>
+</html>
