@@ -27,6 +27,11 @@ Routine を触る必要はない。変更履歴は git で追える。
 
 ## 登録済み Routine
 
+> **現在すべて無効化（`enabled=false`）。** API 経由で作った Routine には Notion コネクタが
+> 付かず、発火しても Notion 登録が落ちることを実測で確認したため。
+> claude.ai の Routines 画面で作り直すこと（手順と貼り付け用の起動文は `routine_prompts.md`）。
+> 作り直したら下の Trigger は削除してよい。
+
 | トラック | Trigger ID | cron (UTC) | 実行時刻 (JST) | 基準期間 | プロンプト定義 | Notion DB |
 |---|---|---|---|---|---|---|
 | ゲームAI / 自己対戦RL | `trig_01U9UaGpTU7bojrzAmWKR56y` | `50 21 * * 6` | 日曜 06:50 | 直近の月〜金 | `game_ai_prompt.md` | [ゲームAI / 自己対戦RL](https://app.notion.com/p/74bb68df48114e959775cc05dab9b919) |
