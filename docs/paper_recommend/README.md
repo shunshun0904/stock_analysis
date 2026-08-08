@@ -27,13 +27,30 @@ Routine を触る必要はない。変更履歴は git で追える。
 
 ## 登録済み Routine
 
-| トラック | Routine 名 | Trigger ID | cron (UTC) | 実行時刻 (JST) | プロンプト定義 | Notion DB |
+| トラック | Trigger ID | cron (UTC) | 実行時刻 (JST) | 基準期間 | プロンプト定義 | Notion DB |
 |---|---|---|---|---|---|---|
-| ゲームAI / 自己対戦RL | 論文レコメンド — ゲームAI / 自己対戦RL（週次・日曜朝） | `trig_01U9UaGpTU7bojrzAmWKR56y` | `50 21 * * 6` | 日曜 06:50 | `game_ai_prompt.md` | [論文DB — ゲームAI / 自己対戦RL](https://app.notion.com/p/74bb68df48114e959775cc05dab9b919) |
-| 金融工学 / ML・マクロ | （未登録） | — | — | 水曜・土曜 | （未設置） | [論文DB — 金融工学 / ML・マクロ](https://app.notion.com/p/4ba5af8498f643ada8d69d589db485cf) |
+| ゲームAI / 自己対戦RL | `trig_01U9UaGpTU7bojrzAmWKR56y` | `50 21 * * 6` | 日曜 06:50 | 直近の月〜金 | `game_ai_prompt.md` | [ゲームAI / 自己対戦RL](https://app.notion.com/p/74bb68df48114e959775cc05dab9b919) |
+| 金融工学 / ML・マクロ（水曜回） | `trig_01KEbgnPrZVAkNEegvCtjfCn` | `50 21 * * 2` | 水曜 06:50 | 直近の月・火 | `finance_prompt.md` | [金融工学 / ML・マクロ](https://app.notion.com/p/4ba5af8498f643ada8d69d589db485cf) |
+| 金融工学 / ML・マクロ（土曜回） | `trig_013Vog8oKAjVjXzqqvosrFhh` | `50 21 * * 5` | 土曜 06:50 | 直近の水・木・金 | `finance_prompt.md` | [金融工学 / ML・マクロ](https://app.notion.com/p/4ba5af8498f643ada8d69d589db485cf) |
 
-cron は **UTC** で評価される。JST は UTC+9 なので、日曜 06:50 JST は土曜 21:50 UTC になり、
-曜日フィールドも土曜（`6`）にずれる点に注意。
+全トラック共通で通知はプッシュのみ（メールなし）。
+
+### UTC と JST の曜日ずれ（重要）
+
+cron は **UTC** で評価される。JST は UTC+9 なので、朝 06:50 JST は前日 21:50 UTC になり、
+**曜日フィールドが1日前にずれる**。上の表の cron が意図した曜日と一致しないように見えるのはこのため。
+
+| 実行したい JST | cron (UTC) | 曜日フィールドの意味 |
+|---|---|---|
+| 日曜 06:50 | `50 21 * * 6` | 土曜 |
+| 水曜 06:50 | `50 21 * * 2` | 火曜 |
+| 土曜 06:50 | `50 21 * * 5` | 金曜 |
+
+同じ理由で、**起動セッションの `date` は狙った曜日の前日を返す**。
+金融トラックの仕様書は対象期間を実行曜日で分岐させている（水曜なら月・火、土曜なら水・木・金）ため、
+ここを取り違えると対象期間がまるごとずれる。各 Routine の起動文の冒頭で
+「この実行は JST の◯曜朝であり、`date` は前日を返す」と明示して防いでいる。
+起動文を書き換えるときは、この一節を消さないこと。
 
 ---
 
@@ -70,9 +87,10 @@ claude.ai の Routines 画面からも同じ操作ができる。
 
 ### 新しいトラックを追加したい
 
-1. `docs/paper_recommend/<track>_prompt.md` を作る。構成は `game_ai_prompt.md` に合わせる
-   （`## 現行版` 見出し＋コードブロック全文、`## 変更履歴`、`## 実行記録`）
-2. 同じ形の起動文で Routine を作る。参照先ファイル名と曜日だけ差し替える
+1. `docs/paper_recommend/<track>_prompt.md` を作る。構成は既存2ファイルに合わせる
+   （`## 現行版` で始まる見出し＋コードブロック全文、`## 変更履歴`、`## 実行記録`）
+2. 既存の起動文をコピーし、参照先ファイル名・Notion DB 名・曜日・
+   「この実行は JST の◯曜朝」の一節を差し替えて Routine を作る
 3. 上の「登録済み Routine」表に追記する
 
 **トラック間でプロンプトと Notion DB は絶対に共有しない。**
@@ -98,10 +116,23 @@ claude.ai の Routines 画面からも同じ操作ができる。
 Routine が起動するセッションで Notion の MCP ツールが使えることが前提。
 使えない場合、探索とチャット出力までは動くが **Notion 登録（出力2）が丸ごと落ちる**。
 
-このリポジトリの Routine は API 経由で作成しており、組織設定の都合で
-コネクタを明示的に紐づけられなかった。初回実行後、Notion DB に行が増えているかを必ず確認すること。
-増えていない場合は、claude.ai の Routines 画面から Notion コネクタを有効にした Routine を
-作り直す（起動文は同じものを貼ればよい）。
+これらの Routine は API（MCP 経由）で作成しており、**組織設定により `connectors` パラメータが
+利用できず、Notion コネクタを紐づけられていない**。作成時に毎回この警告が返る:
+
+> this trigger stores no MCP connectors, so the sessions it fires will run without
+> connector (mcp__<server>__*) tools.
+
+実際、Trigger に保存された `allowed_tools` は組み込みツール（Bash / Read / Write /
+WebSearch / WebFetch 等）のみで、`mcp__` で始まるものは1つも含まれていない。
+
+**したがって、各 Routine の初回実行後に Notion DB へ行が増えたかを必ず確認すること。**
+増えていない場合の対処は、claude.ai の Routines 画面から **Notion コネクタを有効にした状態で
+Routine を作り直す**のが最短（起動文は既存のものをそのまま貼ればよい。作り直したら
+API 側の Trigger は削除して二重実行を防ぐ）。
+
+次善策として、`.mcp.json` をリポジトリにコミットし Notion の内部インテグレーション
+トークンを環境変数で渡す方法もあるが、ホスト型 Notion MCP が Bearer トークンを
+受け付けるかは未検証。OAuth 認証は無人セッションでは完了できない。
 
 ### 探索は非網羅的
 
